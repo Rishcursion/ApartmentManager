@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Database
+*.db
+*.sqlite3
+apartment_manager.db
+
+# Build/Dist
+build/
+dist/
+*.spec
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Exports
+*.xlsx
+*.pdf
+*.csv
+
+# OS
+.DS_Store
+Thumbs.db
