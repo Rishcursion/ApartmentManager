@@ -11,9 +11,14 @@ from utils import export_to_excel, generate_receipt
 
 # Stylesheet designed for readability and large clickable areas
 STYLESHEET = """
+    QMainWindow, QDialog, QMessageBox {
+        background-color: #FAFAFA;
+        color: #333333;
+    }
     QWidget {
         font-family: "Segoe UI", Arial, sans-serif;
         font-size: 14pt;
+        color: #333333;
     }
     QLabel {
         color: #333333;
@@ -46,17 +51,32 @@ STYLESHEET = """
         border: 2px solid #CCCCCC;
         border-radius: 4px;
         background-color: #FFFFFF;
+        color: #111111;
+        selection-background-color: #005A9E;
+        selection-color: #FFFFFF;
     }
     QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
         border: 2px solid #005A9E;
     }
+    QComboBox QAbstractItemView {
+        background-color: #FFFFFF;
+        color: #111111;
+        selection-background-color: #005A9E;
+        selection-color: #FFFFFF;
+        border: 1px solid #CCCCCC;
+    }
     QTableWidget {
+        background-color: #FFFFFF;
+        color: #111111;
         gridline-color: #DDDDDD;
         font-size: 12pt;
         alternate-background-color: #F9F9F9;
+        selection-background-color: #CCE8FF;
+        selection-color: #000000;
     }
     QHeaderView::section {
         background-color: #EBEBEB;
+        color: #333333;
         padding: 10px;
         border: 1px solid #CCCCCC;
         font-weight: bold;
@@ -74,14 +94,17 @@ STYLESHEET = """
         subcontrol-position: top center;
         padding: 0 10px;
         color: #005A9E;
+        background-color: transparent;
         font-size: 16pt;
     }
     QTabWidget::pane {
         border: 1px solid #CCCCCC;
         border-radius: 4px;
+        background-color: #FAFAFA;
     }
     QTabBar::tab {
         background: #EBEBEB;
+        color: #555555;
         padding: 12px 25px;
         margin-right: 2px;
         border-top-left-radius: 6px;
