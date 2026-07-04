@@ -59,10 +59,13 @@ export default function Settings() {
     if (!window.confirm("Are you SURE you want to delete ALL data? This will drop all tables and cannot be undone.")) return;
     const db = await getDb();
     try {
+      await db.execute('PRAGMA foreign_keys = OFF');
+      await db.execute('DROP TABLE IF EXISTS topups');
       await db.execute('DROP TABLE IF EXISTS receipts');
       await db.execute('DROP TABLE IF EXISTS dues');
       await db.execute('DROP TABLE IF EXISTS fee_categories');
       await db.execute('DROP TABLE IF EXISTS residents');
+      await db.execute('PRAGMA foreign_keys = ON');
       toast.success("Database wiped. The app will now reload to re-initialize an empty database.");
       setTimeout(() => window.location.reload(), 1500);
     } catch (e) {

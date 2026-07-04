@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb, getResidentLedger } from './db';
+import { getDb, getResidentLedger, getPeriodDates } from './db';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
@@ -8,6 +8,9 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('outstanding'); // outstanding, settled, all
   const [selectedBlock, setSelectedBlock] = useState('All');
   const [selectedFlat, setSelectedFlat] = useState('All');
+  const [selectedFY, setSelectedFY] = useState('All');
+  const [selectedMonth, setSelectedMonth] = useState('All');
+  const [fiscalYears, setFiscalYears] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [allResidents, setAllResidents] = useState([]);
   const [dues, setDues] = useState([]);
@@ -18,7 +21,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadData();
-  }, [viewMode, selectedCategory]);
+  }, [viewMode, selectedCategory, selectedBlock, selectedFlat, selectedFY, selectedMonth]);
 
   const loadData = async () => {
     setLoading(true);
@@ -26,6 +29,9 @@ export default function Dashboard() {
       const db = await getDb();
       const cats = await db.select("SELECT * FROM fee_categories");
       setCategories(cats);
+
+      const fys = await db.select("SELECT DISTINCT fiscal_year FROM dues WHERE fiscal_year IS NOT NULL ORDER BY fiscal_year DESC");
+      setFiscalYears(fys.map(f => f.fiscal_year));
 
       const blks = await db.select("SELECT DISTINCT block FROM residents WHERE archived = 0 ORDER BY block");
       setBlocks(blks.map(b => b.block));
@@ -49,7 +55,8 @@ export default function Dashboard() {
         months_list: e.data.month + ' ' + e.data.fiscal_year,
         status: e.data.status,
         opening_balance: e.opening_balance,
-        closing_balance: e.closing_balance
+        closing_balance: e.closing_balance,
+        date: e.date
       }));
 
       if (viewMode === 'outstanding') {
@@ -83,9 +90,12 @@ export default function Dashboard() {
     return 0;
   });
 
+  const { startDate, endDate } = getPeriodDates(selectedFY, selectedMonth);
+
   const filteredRows = sortedDues.filter(due => 
     (selectedBlock === 'All' || due.block === selectedBlock) &&
-    (selectedFlat === 'All' || due.flat === selectedFlat)
+    (selectedFlat === 'All' || due.flat === selectedFlat) &&
+    (due.date >= startDate && due.date <= endDate)
   );
 
   const handleSettle = async (due) => {
@@ -127,7 +137,7 @@ export default function Dashboard() {
       </div>
 
       <div className="filters" style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap'}}>
-          <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
+          <select value={selectedBlock} onChange={e => { setSelectedBlock(e.target.value); setSelectedFlat('All'); }}>
             <option value="All">All Blocks</option>
             {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
           </select>
@@ -135,6 +145,16 @@ export default function Dashboard() {
             <option value="All">All Flats</option>
             {Array.from(new Set(allResidents.filter(r => selectedBlock === 'All' || r.block === selectedBlock).map(r => r.flat_no))).map(f => (
               <option key={f} value={f}>Flat {f}</option>
+            ))}
+          </select>
+          <select value={selectedFY} onChange={e => setSelectedFY(e.target.value)}>
+            <option value="All">All Fiscal Years</option>
+            {fiscalYears.map(fy => <option key={fy} value={fy}>{fy}</option>)}
+          </select>
+          <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+            <option value="All">All Months</option>
+            {["April","May","June","July","August","September","October","November","December","January","February","March"].map(m => (
+              <option key={m} value={m}>{m}</option>
             ))}
           </select>
           <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}>

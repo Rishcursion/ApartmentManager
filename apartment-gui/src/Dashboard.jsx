@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getDb, getResidentLedger } from './db';
+import { getDb, getResidentLedger, getPeriodDates } from './db';
 import toast from 'react-hot-toast';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -71,22 +71,7 @@ export default function Dashboard() {
       if (reportType === 'collection') {
         const events = await getResidentLedger();
         
-        let startDate = 0;
-        let endDate = 999999999999999; // Far future
-        
-        if (selectedFY !== 'All') {
-          const startYear = parseInt(selectedFY.split('-')[0]);
-          if (selectedMonth !== 'All') {
-            const monthMap = { "January":1, "February":2, "March":3, "April":4, "May":5, "June":6, "July":7, "August":8, "September":9, "October":10, "November":11, "December":12 };
-            const mIdx = monthMap[selectedMonth];
-            const year = mIdx >= 4 ? startYear : startYear + 1;
-            startDate = new Date(`${year}-${String(mIdx).padStart(2, '0')}-01T00:00:00Z`).getTime();
-            endDate = new Date(new Date(`${year}-${String(mIdx === 12 ? 1 : mIdx + 1).padStart(2, '0')}-01T00:00:00Z`).getTime() - 1).getTime();
-          } else {
-            startDate = new Date(`${startYear}-04-01T00:00:00Z`).getTime();
-            endDate = new Date(`${startYear + 1}-03-31T23:59:59Z`).getTime();
-          }
-        }
+        const { startDate, endDate } = getPeriodDates(selectedFY, selectedMonth);
         
         const flatStats = {};
         resData.forEach(r => {

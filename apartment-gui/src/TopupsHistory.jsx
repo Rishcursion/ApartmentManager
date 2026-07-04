@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb, getResidentLedger } from './db';
+import { getDb, getResidentLedger, getPeriodDates } from './db';
 import toast from 'react-hot-toast';
 
 export default function TopupsHistory() {
@@ -7,6 +7,9 @@ export default function TopupsHistory() {
   const [loading, setLoading] = useState(true);
   const [selectedBlock, setSelectedBlock] = useState('All');
   const [selectedFlat, setSelectedFlat] = useState('All');
+  const [selectedFY, setSelectedFY] = useState('All');
+  const [selectedMonth, setSelectedMonth] = useState('All');
+  const [fiscalYears, setFiscalYears] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [allResidents, setAllResidents] = useState([]);
 
@@ -17,9 +20,12 @@ export default function TopupsHistory() {
   const [manualSource, setManualSource] = useState('Cash');
   const [manualRef, setManualRef] = useState('');
 
+  const { startDate, endDate } = getPeriodDates(selectedFY, selectedMonth);
+
   const filteredTopups = topups.filter(t => 
     (selectedBlock === 'All' || t.block === selectedBlock) &&
-    (selectedFlat === 'All' || String(t.flat_no) === String(selectedFlat))
+    (selectedFlat === 'All' || String(t.flat_no) === String(selectedFlat)) &&
+    (t.date >= startDate && t.date <= endDate)
   );
 
   useEffect(() => {
@@ -30,6 +36,9 @@ export default function TopupsHistory() {
     setLoading(true);
     try {
       const db = await getDb();
+      const fys = await db.select("SELECT DISTINCT fiscal_year FROM dues WHERE fiscal_year IS NOT NULL ORDER BY fiscal_year DESC");
+      setFiscalYears(fys.map(f => f.fiscal_year));
+
       const blks = await db.select("SELECT DISTINCT block FROM residents WHERE archived = 0 ORDER BY block");
       setBlocks(blks.map(b => b.block));
       
@@ -40,7 +49,8 @@ export default function TopupsHistory() {
       const topupsEvents = allEvents.filter(e => e.type === 'topup').map(e => ({
         ...e.data,
         opening_balance: e.opening_balance,
-        closing_balance: e.closing_balance
+        closing_balance: e.closing_balance,
+        date: e.date
       })).reverse();
       setTopups(topupsEvents);
     } catch (e) {
@@ -76,7 +86,7 @@ export default function TopupsHistory() {
     <div className="dashboard">
       <div className="dashboard-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
         <h2>Top-up & Transaction History</h2>
-        <div style={{display: 'flex', gap: '1rem'}}>
+        <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
           <select value={selectedBlock} onChange={e => { setSelectedBlock(e.target.value); setSelectedFlat('All'); }}>
             <option value="All">All Blocks</option>
             {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
@@ -85,6 +95,16 @@ export default function TopupsHistory() {
             <option value="All">All Flats</option>
             {Array.from(new Set(allResidents.filter(r => selectedBlock === 'All' || r.block === selectedBlock).map(r => r.flat_no))).map(f => (
               <option key={f} value={f}>Flat {f}</option>
+            ))}
+          </select>
+          <select value={selectedFY} onChange={e => setSelectedFY(e.target.value)}>
+            <option value="All">All Fiscal Years</option>
+            {fiscalYears.map(fy => <option key={fy} value={fy}>{fy}</option>)}
+          </select>
+          <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+            <option value="All">All Months</option>
+            {["April","May","June","July","August","September","October","November","December","January","February","March"].map(m => (
+              <option key={m} value={m}>{m}</option>
             ))}
           </select>
           <button className="primary-btn" onClick={() => setShowManualModal(true)}>+ Manual Payment</button>
