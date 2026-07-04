@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function GenerateDues() {
   const [categories, setCategories] = useState([]);
@@ -12,7 +13,6 @@ export default function GenerateDues() {
   const [fiscalYear, setFiscalYear] = useState('FY26-27');
   
   const [variableAmounts, setVariableAmounts] = useState({});
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     loadData();
@@ -49,7 +49,7 @@ export default function GenerateDues() {
     }
 
     if (targets.length === 0) {
-      setMessage("No apartments found to generate dues for.");
+      toast.error("No apartments found to generate dues for.");
       return;
     }
 
@@ -64,11 +64,11 @@ export default function GenerateDues() {
           );
         }
       }
-      setMessage(`Successfully generated dues for ${targets.length} apartment(s) for ${month} ${fiscalYear}!`);
+      toast.success(`Successfully generated dues for ${targets.length} apartment(s) for ${month} ${fiscalYear}!`);
       setVariableAmounts({});
     } catch (e) {
       console.error(e);
-      setMessage(`Error generating dues: ${e.message}`);
+      toast.error(`Error generating dues: ${e.message}`);
     }
   };
 
@@ -172,8 +172,6 @@ export default function GenerateDues() {
 
           <button type="submit" className="primary-btn" style={{ padding: '0.75rem', marginTop: '1rem' }}>Generate Dues</button>
         </form>
-
-        {message && <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--match-bg)', color: 'var(--match-text)', fontWeight: 'bold' }}>{message}</div>}
       </div>
     </div>
   );

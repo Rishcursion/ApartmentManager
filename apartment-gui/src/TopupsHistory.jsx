@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function TopupsHistory() {
   const [topups, setTopups] = useState([]);
@@ -49,7 +50,7 @@ export default function TopupsHistory() {
   const handleManualPayment = async (e) => {
     e.preventDefault();
     if (!manualResId || !manualAmount || isNaN(manualAmount) || Number(manualAmount) <= 0) {
-      alert("Please enter a valid amount.");
+      toast.error("Please enter a valid amount.");
       return;
     }
     
@@ -57,14 +58,14 @@ export default function TopupsHistory() {
       const db = await getDb();
       await db.execute("UPDATE residents SET credit_balance = credit_balance + ? WHERE id = ?", [Number(manualAmount), manualResId]);
       await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id) VALUES (?, ?, ?, ?)", [manualResId, Number(manualAmount), manualSource, manualRef]);
-      alert("Payment manually added to flat's credit balance!");
+      toast.success("Payment manually added to flat's credit balance!");
       setManualAmount('');
       setManualRef('');
       setShowManualModal(false);
       loadData();
     } catch (e) {
       console.error(e);
-      alert("Error saving manual payment.");
+      toast.error("Error saving manual payment.");
     }
   };
 

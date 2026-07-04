@@ -17,6 +17,7 @@
     "papaparse": "^5.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-hot-toast": "^2.6.0",
     "react-select": "^5.10.2",
     "sqlite3": "^6.0.1"
   },

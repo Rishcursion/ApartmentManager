@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import Select from 'react-select';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function CSVImport() {
   const [rows, setRows] = useState(() => {
@@ -195,9 +196,10 @@ export default function CSVImport() {
         
         // Remove from UI
         setRows(prev => prev.filter(r => r.id !== row.id));
+        toast.success("Payment approved and allocated");
     } catch (e) {
       console.error(e);
-      alert("Database error applying payment.");
+      toast.error("Database error applying payment.");
     }
   };
 

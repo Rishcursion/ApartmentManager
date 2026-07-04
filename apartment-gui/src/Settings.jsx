@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function Settings() {
   const [categories, setCategories] = useState([]);
@@ -26,20 +27,32 @@ export default function Settings() {
     e.preventDefault();
     const finalAmount = isVariable ? 0 : parseFloat(amount);
     if (!name || (!isVariable && !amount)) return;
-    const db = await getDb();
-    await db.execute("INSERT INTO fee_categories (name, type, amount, archived, is_variable) VALUES (?, ?, ?, 0, ?)", [name, type, finalAmount, isVariable ? 1 : 0]);
-    setName('');
-    setAmount('');
-    setType('Monthly');
-    setIsVariable(false);
-    loadCategories();
+    try {
+      const db = await getDb();
+      await db.execute("INSERT INTO fee_categories (name, type, amount, archived, is_variable) VALUES (?, ?, ?, 0, ?)", [name, type, finalAmount, isVariable ? 1 : 0]);
+      setName('');
+      setAmount('');
+      setType('Monthly');
+      setIsVariable(false);
+      toast.success("Category added successfully");
+      loadCategories();
+    } catch (e) {
+      toast.error("Error adding category");
+      console.error(e);
+    }
   };
 
   const toggleArchive = async (id, currentStatus) => {
-    const db = await getDb();
-    const newStatus = currentStatus === 1 ? 0 : 1;
-    await db.execute("UPDATE fee_categories SET archived = ? WHERE id = ?", [newStatus, id]);
-    loadCategories();
+    try {
+      const db = await getDb();
+      const newStatus = currentStatus === 1 ? 0 : 1;
+      await db.execute("UPDATE fee_categories SET archived = ? WHERE id = ?", [newStatus, id]);
+      toast.success(newStatus === 1 ? "Category archived" : "Category restored");
+      loadCategories();
+    } catch (e) {
+      toast.error("Error toggling category archive");
+      console.error(e);
+    }
   };
 
   const factoryReset = async () => {
@@ -50,11 +63,11 @@ export default function Settings() {
       await db.execute('DROP TABLE IF EXISTS dues');
       await db.execute('DROP TABLE IF EXISTS fee_categories');
       await db.execute('DROP TABLE IF EXISTS residents');
-      alert("Database wiped. The app will now reload to re-initialize an empty database.");
-      window.location.reload();
+      toast.success("Database wiped. The app will now reload to re-initialize an empty database.");
+      setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
       console.error(e);
-      alert("Error wiping database.");
+      toast.error("Error wiping database.");
     }
   };
 

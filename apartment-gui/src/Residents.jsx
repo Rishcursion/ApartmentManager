@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function Residents() {
   const [residents, setResidents] = useState([]);
@@ -16,15 +17,27 @@ export default function Residents() {
   };
 
   const updateResident = async (id, field, value) => {
-    const db = await getDb();
-    await db.execute(`UPDATE residents SET ${field} = ? WHERE id = ?`, [value, id]);
-    loadResidents();
+    try {
+      const db = await getDb();
+      await db.execute(`UPDATE residents SET ${field} = ? WHERE id = ?`, [value, id]);
+      toast.success("Flat updated successfully");
+      loadResidents();
+    } catch (e) {
+      toast.error("Error updating flat");
+      console.error(e);
+    }
   };
 
   const toggleArchive = async (id, isArchived) => {
-    const db = await getDb();
-    await db.execute("UPDATE residents SET archived = ? WHERE id = ?", [isArchived ? 0 : 1, id]);
-    loadResidents();
+    try {
+      const db = await getDb();
+      await db.execute("UPDATE residents SET archived = ? WHERE id = ?", [isArchived ? 0 : 1, id]);
+      toast.success(isArchived ? "Flat restored" : "Flat deleted");
+      loadResidents();
+    } catch (e) {
+      toast.error("Error toggling flat status");
+      console.error(e);
+    }
   };
 
   const filteredResidents = residents.filter(r => 

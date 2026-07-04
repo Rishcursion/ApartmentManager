@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
 
 export default function Dashboard() {
   const [categories, setCategories] = useState([]);
@@ -86,7 +87,7 @@ export default function Dashboard() {
     const avail = due.credit_balance || 0;
     
     if (avail <= 0) {
-      alert("This resident has no advance credit balance to settle this bill. Import a CSV payment first!");
+      toast.error("This resident has no advance credit balance to settle this bill. Import a CSV payment first!");
       return;
     }
     
@@ -104,9 +105,10 @@ export default function Dashboard() {
       await db.execute("UPDATE residents SET credit_balance = credit_balance - ? WHERE id = ?", [amtToSettle, due.res_id]);
       
       loadData();
+      toast.success(`Settled ₹${amtToSettle} for this bill`);
     } catch (e) {
       console.error(e);
-      alert("Error settling due.");
+      toast.error("Error settling due.");
     }
   };
 

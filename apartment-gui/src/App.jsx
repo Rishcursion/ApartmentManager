@@ -9,6 +9,7 @@ import GenerateDues from './GenerateDues';
 import TopupsHistory from './TopupsHistory';
 import './App.css';
 import { Sun, Moon, Contrast, Type } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('dashboard');
@@ -79,6 +80,7 @@ export default function App() {
         {currentTab === 'generate' && <GenerateDues />}
         {currentTab === 'settings' && <Settings />}
       </main>
+      <Toaster position="bottom-right" toastOptions={{ style: { background: 'var(--card-bg)', color: 'var(--text-color)' } }} />
     </div>
   );
 }
