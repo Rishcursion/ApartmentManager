@@ -17,6 +17,7 @@ export default function Ledger() {
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'block', direction: 'asc' });
   const [pendingSettlement, setPendingSettlement] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
 
 
@@ -113,7 +114,8 @@ export default function Ledger() {
   };
 
   const confirmSettlement = async () => {
-    if (!pendingSettlement) return;
+    if (!pendingSettlement || isProcessing) return;
+    setIsProcessing(true);
     try {
       const result = await settleDue({
         dueId: pendingSettlement.due.unique_id,
@@ -124,8 +126,10 @@ export default function Ledger() {
       loadData();
       toast.success(`Settled ₹${result.amountSettled} for this bill`);
     } catch (e) {
-      console.error(e);
-      toast.error("Error settling due.");
+      console.error("Settlement error:", e);
+      toast.error(`Error settling due: ${e.message || e}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -255,8 +259,10 @@ export default function Ledger() {
               </div>
             </div>
             <div className="modal-actions">
-              <button className="secondary-btn" onClick={() => setPendingSettlement(null)}>Cancel</button>
-              <button className="primary-btn" onClick={confirmSettlement}>Confirm Settlement</button>
+              <button className="secondary-btn" disabled={isProcessing} onClick={() => setPendingSettlement(null)}>Cancel</button>
+              <button className="primary-btn" disabled={isProcessing} onClick={confirmSettlement}>
+                {isProcessing ? 'Processing...' : 'Confirm Settlement'}
+              </button>
             </div>
           </div>
         </div>

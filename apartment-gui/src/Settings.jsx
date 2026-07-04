@@ -12,6 +12,7 @@ export default function Settings() {
   const [layoutJson, setLayoutJson] = useState(JSON.stringify(DEFAULT_APARTMENT_LAYOUT, null, 2));
   const [isAdvancedLayout, setIsAdvancedLayout] = useState(false);
   const [showDangerModal, setShowDangerModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     loadCategories();
@@ -25,7 +26,7 @@ export default function Settings() {
       setCategories(result);
     } catch (e) {
       console.error(e);
-      toast.error("Error loading categories");
+      toast.error(`Error loading categories: ${e.message || e}`);
     }
   };
 
@@ -35,16 +36,19 @@ export default function Settings() {
       setLayoutJson(JSON.stringify(layout, null, 2));
     } catch (e) {
       console.error(e);
-      toast.error("Error loading apartment layout");
+      toast.error(`Error loading apartment layout: ${e.message || e}`);
     }
   };
 
   const updateApartmentLayout = async (e) => {
     if (e) e.preventDefault();
+    if (isProcessing) return;
+    setIsProcessing(true);
     try {
       const parsed = JSON.parse(layoutJson);
       if (!Array.isArray(parsed)) {
         toast.error("Layout must be a JSON array.");
+        setIsProcessing(false);
         return;
       }
       await saveApartmentLayout(parsed);
@@ -53,13 +57,17 @@ export default function Settings() {
     } catch (e) {
       console.error(e);
       toast.error(e instanceof SyntaxError ? "Invalid JSON layout." : `Error saving layout: ${e.message}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const addCategory = async (e) => {
     e.preventDefault();
+    if (isProcessing) return;
     const finalAmount = isVariable ? 0 : parseFloat(amount);
     if (!name || (!isVariable && !amount)) return;
+    setIsProcessing(true);
     try {
       const db = await getDb();
       await db.execute("INSERT INTO fee_categories (name, type, amount, archived, is_variable) VALUES (?, ?, ?, 0, ?)", [name, type, finalAmount, isVariable ? 1 : 0]);
@@ -70,12 +78,16 @@ export default function Settings() {
       toast.success("Category added successfully");
       loadCategories();
     } catch (e) {
-      toast.error("Error adding category");
+      toast.error(`Error adding category: ${e.message || e}`);
       console.error(e);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const toggleArchive = async (id, currentStatus) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     try {
       const db = await getDb();
       const newStatus = currentStatus === 1 ? 0 : 1;
@@ -83,12 +95,16 @@ export default function Settings() {
       toast.success(newStatus === 1 ? "Category archived" : "Category restored");
       loadCategories();
     } catch (e) {
-      toast.error("Error toggling category archive");
+      toast.error(`Error toggling category archive: ${e.message || e}`);
       console.error(e);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const confirmFactoryReset = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     setShowDangerModal(false);
     const db = await getDb();
     try {
@@ -104,7 +120,8 @@ export default function Settings() {
       setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
       console.error(e);
-      toast.error("Error wiping database.");
+      toast.error(`Error wiping database: ${e.message || e}`);
+      setIsProcessing(false);
     }
   };
 
@@ -182,7 +199,7 @@ export default function Settings() {
               {!isVariable && (
                 <input type="number" placeholder="Base Amount (₹)" value={amount} onChange={e => setAmount(e.target.value)} required />
               )}
-              <button className="primary-btn" type="submit">Add Category</button>
+              <button className="primary-btn" type="submit" disabled={isProcessing}>Add Category</button>
             </form>
           </div>
 
@@ -209,7 +226,7 @@ export default function Settings() {
                       <td className="money">{cat.is_variable === 1 ? 'N/A' : `₹${cat.amount}`}</td>
                       <td>{cat.archived ? 'Archived' : 'Active'}</td>
                       <td>
-                        <button onClick={() => toggleArchive(cat.id, cat.archived)} className="action-btn">
+                        <button onClick={() => toggleArchive(cat.id, cat.archived)} className="action-btn" disabled={isProcessing}>
                           {cat.archived ? 'Restore' : 'Archive'}
                         </button>
                       </td>
@@ -245,7 +262,7 @@ export default function Settings() {
                   spellCheck="false"
                   style={{fontFamily: 'monospace', padding: '0.75rem', background: 'var(--bg-color)', color: 'var(--text-color)', border: '1px solid var(--border-color)', width: '100%'}}
                 />
-                <button type="submit" className="primary-btn" style={{alignSelf: 'flex-start'}}>Save Apartment Layout</button>
+                <button type="submit" className="primary-btn" disabled={isProcessing} style={{alignSelf: 'flex-start'}}>Save Apartment Layout</button>
               </form>
             ) : (
               <div className="flex-col gap-1">
@@ -283,7 +300,7 @@ export default function Settings() {
                 </div>
                 <div className="flex-row gap-1 mt-1">
                   <button className="secondary-btn" onClick={addVisualBlock}>+ Add Block</button>
-                  <button className="primary-btn" onClick={updateApartmentLayout}>Save Apartment Layout</button>
+                  <button className="primary-btn" disabled={isProcessing} onClick={updateApartmentLayout}>Save Apartment Layout</button>
                 </div>
               </div>
             )}

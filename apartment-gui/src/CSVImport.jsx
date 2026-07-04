@@ -17,6 +17,7 @@ export default function CSVImport() {
   const [allFlats, setAllFlats] = useState([]);
   const [masterDataLoaded, setMasterDataLoaded] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     sessionStorage.setItem('csvRows', JSON.stringify(rows));
@@ -182,7 +183,9 @@ export default function CSVImport() {
     return Math.abs(totalSplit - row.amount) < 0.01;
   };
 
-  const approvePayment = async (row) => {
+  const approvePayment = async (row, skipIsProcessing = false) => {
+    if (!skipIsProcessing && isProcessing) return;
+    if (!skipIsProcessing) setIsProcessing(true);
     // Real DB update to reflect in Dashboard
     const db = await getDb();
     try {
@@ -237,7 +240,9 @@ export default function CSVImport() {
         }
     } catch (e) {
       console.error(e);
-      toast.error("Database error applying payment.");
+      toast.error(`Database error applying payment: ${e.message || e}`);
+    } finally {
+      if (!skipIsProcessing) setIsProcessing(false);
     }
   };
 
@@ -268,31 +273,47 @@ export default function CSVImport() {
   };
 
   const approveSelectedPayments = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     const selectedRowsData = sortedRows.filter(r => selectedRowIds.has(r.id));
     const readyRows = selectedRowsData.filter(canApproveRow);
     
     if (readyRows.length === 0) {
       toast.error("No valid selected payments to approve. Ensure you've mapped flats.");
+      setIsProcessing(false);
       return;
     }
 
-    for (const row of readyRows) {
-      await approvePayment(row);
+    try {
+      for (const row of readyRows) {
+        await approvePayment(row, true); // true = skip isProcessing toggle inside approvePayment
+      }
+      setSelectedRowIds(new Set());
+    } finally {
+      setIsProcessing(false);
     }
-    setSelectedRowIds(new Set());
   };
 
   const approveReadyPayments = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
     const readyRows = sortedRows.filter(canApproveRow);
     if (readyRows.length === 0) {
       toast.error("No ready payments to approve.");
+      setIsProcessing(false);
       return;
     }
 
-    for (const row of readyRows) {
-      await approvePayment(row);
+    try {
+      for (const row of readyRows) {
+        await processRowApproval(row);
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
+
+
 
   return (
     <div className="csv-import">
@@ -305,15 +326,15 @@ export default function CSVImport() {
           {rows.length > 0 && (
             <>
               {selectedRowIds.size > 0 && (
-                <button className="primary-btn" onClick={approveSelectedPayments}>Approve Selected ({selectedRowIds.size})</button>
+                <button className="primary-btn" disabled={isProcessing} onClick={approveSelectedPayments}>Approve Selected ({selectedRowIds.size})</button>
               )}
-              <button className="secondary-btn" onClick={approveReadyPayments}>Approve Ready</button>
-              <button className="secondary-btn" onClick={() => { setRows([]); setSelectedRowIds(new Set()); }}>Clear Queue</button>
+              <button className="secondary-btn" disabled={isProcessing} onClick={approveReadyPayments}>Approve Ready</button>
+              <button className="secondary-btn" disabled={isProcessing} onClick={() => { setRows([]); setSelectedRowIds(new Set()); }}>Clear Queue</button>
             </>
           )}
-          <label className="primary-btn" style={{cursor: masterDataLoaded ? 'pointer' : 'not-allowed', opacity: masterDataLoaded ? 1 : 0.6}}>
-            {masterDataLoaded ? 'Import New CSV' : 'Loading Apartments...'}
-            <input type="file" accept=".csv" disabled={!masterDataLoaded} style={{ display: 'none' }} onChange={handleFileUpload} />
+          <label className="primary-btn" style={{cursor: masterDataLoaded && !isProcessing ? 'pointer' : 'not-allowed', opacity: masterDataLoaded && !isProcessing ? 1 : 0.6}}>
+            {masterDataLoaded ? (isProcessing ? 'Processing...' : 'Import New CSV') : 'Loading Apartments...'}
+            <input type="file" accept=".csv" disabled={!masterDataLoaded || isProcessing} style={{ display: 'none' }} onChange={handleFileUpload} />
           </label>
         </div>
       </div>
@@ -427,7 +448,7 @@ export default function CSVImport() {
                       <div className="flex-row gap-05">
                         <button 
                           className="action-btn primary-btn" 
-                          disabled={!canApproveRow(row)}
+                          disabled={!canApproveRow(row) || isProcessing}
                           onClick={() => approvePayment(row)}
                           style={{padding: '4px 8px'}}
                         >
@@ -435,8 +456,9 @@ export default function CSVImport() {
                         </button>
                         <button 
                           className="action-btn"
+                          disabled={isProcessing}
                           onClick={() => removeRow(row.id)}
-                          style={{padding: '4px 8px', backgroundColor: 'var(--error-color, #e74c3c)', color: 'white'}}
+                          style={{padding: '4px 8px', backgroundColor: 'var(--error-color, #e74c3c)', color: 'white', opacity: isProcessing ? 0.5 : 1}}
                         >
                           Skip
                         </button>

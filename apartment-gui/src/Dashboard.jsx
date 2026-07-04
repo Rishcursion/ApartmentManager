@@ -189,8 +189,8 @@ export default function Dashboard() {
         await openPath(filePath);
       }
     } catch (e) {
-      console.error(e);
-      toast.error("Error exporting file.");
+      console.error("Export error:", e);
+      toast.error(`Error exporting file: ${e.message || e}`);
       
       // Web fallback if Tauri APIs fail
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

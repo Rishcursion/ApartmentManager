@@ -74,15 +74,9 @@ export function getFiscalStartYear(fy) {
 
 export async function withTransaction(callback) {
   const db = await getDb();
-  await db.execute('BEGIN IMMEDIATE');
-  try {
-    const result = await callback(db);
-    await db.execute('COMMIT');
-    return result;
-  } catch (error) {
-    await db.execute('ROLLBACK');
-    throw error;
-  }
+  // Manual BEGIN/COMMIT causes deadlocks with tauri-plugin-sql connection pool
+  // because each db.execute might be dispatched to a different connection.
+  return await callback(db);
 }
 
 export async function recordTopup({ residentId, amount, source, transactionId = '', transactionDate = '' }) {

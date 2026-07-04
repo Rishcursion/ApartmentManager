@@ -11,8 +11,8 @@ export default function GenerateDues() {
   const [selectedFlat, setSelectedFlat] = useState('');
   const [month, setMonth] = useState('');
   const [fiscalYear, setFiscalYear] = useState('2026-27');
-  
   const [variableAmounts, setVariableAmounts] = useState({});
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -34,10 +34,14 @@ export default function GenerateDues() {
 
   const handleGenerate = async (e) => {
     e.preventDefault();
-    if (!selectedCategory || !month || !fiscalYear) return;
+    if (!selectedCategory || !month || !fiscalYear || isGenerating) return;
     
+    setIsGenerating(true);
     const category = categories.find(c => c.id.toString() === selectedCategory.toString());
-    if (!category) return;
+    if (!category) {
+      setIsGenerating(false);
+      return;
+    }
 
     let targets = [];
     if (targetType === 'ALL') {
@@ -49,6 +53,7 @@ export default function GenerateDues() {
 
     if (targets.length === 0) {
       toast.error("No apartments found to generate dues for.");
+      setIsGenerating(false);
       return;
     }
 
@@ -89,6 +94,8 @@ export default function GenerateDues() {
     } catch (e) {
       console.error(e);
       toast.error(`Error generating dues: ${e.message}`);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -190,7 +197,9 @@ export default function GenerateDues() {
             </div>
           )}
 
-          <button type="submit" className="primary-btn" style={{ padding: '0.75rem', marginTop: '1rem' }}>Generate Dues</button>
+          <button type="submit" className="primary-btn" style={{ padding: '0.75rem', marginTop: '1rem' }} disabled={isGenerating}>
+            {isGenerating ? 'Generating...' : 'Generate Dues'}
+          </button>
         </form>
       </div>
     </div>
