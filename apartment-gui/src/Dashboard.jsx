@@ -73,7 +73,7 @@ export default function Dashboard() {
 
         const finalQuery = `
           SELECT 
-            r.block, CAST(r.flat_no AS INTEGER) as flat_num, r.flat_no as flat, r.name,
+            r.id as resident_id, r.block, CAST(r.flat_no AS INTEGER) as flat_num, r.flat_no as flat, r.name, r.credit_balance,
             COALESCE(sq.total_due, 0) as total_due,
             COALESCE(sq.total_paid, 0) as total_paid
           FROM residents r
@@ -82,6 +82,26 @@ export default function Dashboard() {
           ORDER BY r.block, CAST(r.flat_no AS INTEGER)
         `;
         const rows = await db.select(finalQuery);
+        
+        // Calculate Opening Balances if FY is selected
+        if (selectedFY !== 'All') {
+          const prevQuery = `
+            SELECT resident_id, SUM(amount - paid_amount) as prev_due
+            FROM dues
+            WHERE fiscal_year < ?
+            GROUP BY resident_id
+          `;
+          const prevRows = await db.select(prevQuery, [selectedFY]);
+          const prevMap = {};
+          prevRows.forEach(p => prevMap[p.resident_id] = p.prev_due);
+          
+          rows.forEach(r => {
+            r.opening_balance = prevMap[r.resident_id] || 0;
+          });
+        } else {
+          rows.forEach(r => r.opening_balance = 0);
+        }
+        
         setFlatData(rows);
       } else {
         // Due Report (Itemized Outstanding)
@@ -112,17 +132,20 @@ export default function Dashboard() {
     let csv = "";
     
     if (reportType === 'collection') {
-      csv += "Block ID,Flat No,Resident Name,Total Amount Due,Total Amount Paid,Total Amount Outstanding\n";
-      let sumDue = 0, sumPaid = 0, sumOut = 0;
+      csv += "Block ID,Flat No,Resident Name,Opening Balance,Amount Due (Billed),Amount Paid (Allocated),Closing Balance\n";
+      let sumOp = 0, sumDue = 0, sumPaid = 0, sumOut = 0;
       
       filteredFlats.forEach(row => {
-        const out = row.total_due - row.total_paid;
-        csv += `${row.block},${row.flat},"${row.name || ''}",${row.total_due},${row.total_paid},${out}\n`;
+        const out = row.opening_balance + row.total_due - (row.total_paid + (row.credit_balance || 0));
+        const outText = out === 0 ? "0.00" : (out > 0 ? `${out.toFixed(2)} Dr` : `${Math.abs(out).toFixed(2)} Cr`);
+        csv += `${row.block},${row.flat},"${row.name || ''}",${row.opening_balance},${row.total_due},${row.total_paid},${outText}\n`;
+        sumOp += row.opening_balance;
         sumDue += row.total_due;
         sumPaid += row.total_paid;
         sumOut += out;
       });
-      csv += `Total Result,,,"${sumDue}","${sumPaid}","${sumOut}"\n`;
+      const sumOutText = sumOut === 0 ? "0.00" : (sumOut > 0 ? `${sumOut.toFixed(2)} Dr` : `${Math.abs(sumOut).toFixed(2)} Cr`);
+      csv += `Total Result,,,${sumOp},${sumDue},${sumPaid},${sumOutText}\n`;
     } else {
       csv += "Block ID,Flat No,Resident Name,Charge Head,Period,Amount Due,Amount Paid,Balance\n";
       let sumDue = 0, sumPaid = 0, sumBal = 0;
@@ -174,6 +197,7 @@ export default function Dashboard() {
     (r.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  let grandTotalOp = 0;
   let grandTotalDue = 0;
   let grandTotalPaid = 0;
   let grandTotalOut = 0;
@@ -248,36 +272,41 @@ export default function Dashboard() {
                   <th>Block ID</th>
                   <th>Flat No</th>
                   <th>Resident Name</th>
-                  <th style={{textAlign:'right'}}>Total Amount Due</th>
-                  <th style={{textAlign:'right'}}>Total Amount Paid</th>
-                  <th style={{textAlign:'right'}}>Total Amount Outstanding</th>
+                  <th style={{textAlign:'right'}}>Opening Balance</th>
+                  <th style={{textAlign:'right'}}>Amount Due</th>
+                  <th style={{textAlign:'right'}}>Amount Paid</th>
+                  <th style={{textAlign:'right'}}>Closing Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredFlats.map((row, i) => {
-                  const out = row.total_due - row.total_paid;
+                  const out = row.opening_balance + row.total_due - (row.total_paid + (row.credit_balance || 0));
+                  grandTotalOp += row.opening_balance;
                   grandTotalDue += row.total_due;
                   grandTotalPaid += row.total_paid;
                   grandTotalOut += out;
                   
                   const isNewBlock = i === 0 || filteredFlats[i-1].block !== row.block;
+                  const outText = out === 0 ? "0.00" : (out > 0 ? `₹${out.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(out).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`);
 
                   return (
                     <tr key={`${row.block}-${row.flat}`}>
                       <td style={{fontWeight: isNewBlock ? 'bold' : 'normal'}}>{isNewBlock ? `⊞ ${row.block}` : ''}</td>
                       <td>{row.flat}</td>
                       <td>{row.name}</td>
+                      <td style={{textAlign:'right'}}>₹{row.opening_balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                       <td style={{textAlign:'right'}}>₹{row.total_due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                       <td style={{textAlign:'right'}}>₹{row.total_paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right'}}>₹{out.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td style={{textAlign:'right', fontWeight: 'bold', color: out > 0 ? 'var(--error-color, #e74c3c)' : (out < 0 ? '#27ae60' : 'inherit')}}>{outText}</td>
                     </tr>
                   );
                 })}
                 <tr style={{fontWeight: 'bold', backgroundColor: 'var(--bg-color)'}}>
                   <td colSpan="3">Total Result</td>
+                  <td style={{textAlign:'right'}}>₹{grandTotalOp.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   <td style={{textAlign:'right'}}>₹{grandTotalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   <td style={{textAlign:'right'}}>₹{grandTotalPaid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td style={{textAlign:'right'}}>{grandTotalOut === 0 ? "0.00" : (grandTotalOut > 0 ? `₹${grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(grandTotalOut).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`)}</td>
                 </tr>
               </tbody>
             </table>
