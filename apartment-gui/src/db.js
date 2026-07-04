@@ -86,6 +86,10 @@ export async function initDb() {
       );
     `);
     
+    try {
+      await db.execute(`ALTER TABLE topups ADD COLUMN transaction_date TEXT`);
+    } catch (e) {}
+    
     // Seed residents synchronously to prevent React Strict Mode race conditions
     const resCount = await db.select("SELECT COUNT(*) as count FROM residents");
     if (resCount[0].count === 0) {

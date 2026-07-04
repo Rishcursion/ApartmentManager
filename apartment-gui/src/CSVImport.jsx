@@ -190,7 +190,7 @@ export default function CSVImport() {
             const res = await db.select("SELECT credit_balance FROM residents WHERE id = ?", [resId]);
             const currentCredit = res[0]?.credit_balance || 0;
             await db.execute("UPDATE residents SET credit_balance = ? WHERE id = ?", [currentCredit + amtToCredit, resId]);
-            await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id) VALUES (?, ?, ?, ?)", [resId, amtToCredit, 'CSV Import', row.desc ? row.desc.substring(0, 50) : '']);
+            await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id, transaction_date) VALUES (?, ?, ?, ?, ?)", [resId, amtToCredit, 'CSV Import', row.desc ? row.desc.substring(0, 50) : '', row.date || '']);
           }
         }
         

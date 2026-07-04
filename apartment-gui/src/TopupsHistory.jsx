@@ -57,7 +57,8 @@ export default function TopupsHistory() {
     try {
       const db = await getDb();
       await db.execute("UPDATE residents SET credit_balance = credit_balance + ? WHERE id = ?", [Number(manualAmount), manualResId]);
-      await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id) VALUES (?, ?, ?, ?)", [manualResId, Number(manualAmount), manualSource, manualRef]);
+      const today = new Date().toISOString().split('T')[0];
+      await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id, transaction_date) VALUES (?, ?, ?, ?, ?)", [manualResId, Number(manualAmount), manualSource, manualRef, today]);
       toast.success("Payment manually added to flat's credit balance!");
       setManualAmount('');
       setManualRef('');
@@ -140,7 +141,8 @@ export default function TopupsHistory() {
             <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
               <tr>
                 <th>Tx ID</th>
-                <th>Date / Time</th>
+                <th>Apprvl Date / Time</th>
+                <th>Bank Date</th>
                 <th>Block/Flat</th>
                 <th>Resident</th>
                 <th>Amount (₹)</th>
@@ -149,19 +151,24 @@ export default function TopupsHistory() {
               </tr>
             </thead>
             <tbody>
-              {topups.map(t => (
+              {topups.map(t => {
+                const rawDate = t.created_at ? t.created_at.replace(' ', 'T') + 'Z' : '';
+                const displayDate = rawDate ? new Date(rawDate).toLocaleString() : '-';
+                return (
                 <tr key={t.id}>
                   <td>#{t.id}</td>
-                  <td>{new Date(t.created_at + 'Z').toLocaleString()}</td>
+                  <td><small>{displayDate}</small></td>
+                  <td>{t.transaction_date || '-'}</td>
                   <td>{t.block}-{t.flat_no}</td>
                   <td>{t.name}</td>
                   <td style={{color: 'var(--primary-color)', fontWeight: 'bold'}}>+ ₹{t.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   <td><span className="badge" style={{background: 'var(--bg-color)', color: 'var(--text-color)', border: '1px solid var(--border-color)'}}>{t.source}</span></td>
                   <td><small>{t.transaction_id || '-'}</small></td>
                 </tr>
-              ))}
+                );
+              })}
               {topups.length === 0 && (
-                <tr><td colSpan="7" style={{textAlign: 'center', padding: '2rem'}}>No transactions found yet. Import a CSV or add a manual payment!</td></tr>
+                <tr><td colSpan="8" style={{textAlign: 'center', padding: '2rem'}}>No transactions found yet. Import a CSV or add a manual payment!</td></tr>
               )}
             </tbody>
           </table>

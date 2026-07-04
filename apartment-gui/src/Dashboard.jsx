@@ -3,7 +3,7 @@ import { getDb } from './db';
 import toast from 'react-hot-toast';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
-import { open } from '@tauri-apps/plugin-opener';
+import { openPath } from '@tauri-apps/plugin-opener';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ totalDue: 0, totalPaid: 0, outstanding: 0, totalCredit: 0 });
@@ -146,7 +146,7 @@ export default function Dashboard() {
       if (filePath) {
         await writeTextFile(filePath, csv);
         toast.success("Exported successfully! Opening file...");
-        await open(filePath);
+        await openPath(filePath);
       }
     } catch (e) {
       console.error(e);
