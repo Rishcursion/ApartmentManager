@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getDb } from './db';
+import toast from 'react-hot-toast';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-opener';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ totalDue: 0, totalPaid: 0, outstanding: 0, totalCredit: 0 });
@@ -104,7 +108,7 @@ export default function Dashboard() {
     setLoading(false);
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     let csv = "";
     
     if (reportType === 'collection') {
@@ -132,14 +136,32 @@ export default function Dashboard() {
       csv += `Total Result,,,,"${sumDue}","${sumPaid}","${sumBal}"\n`;
     }
     
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Society_${reportType === 'collection' ? 'Collection' : 'Due'}_Report_${selectedBlock !== 'All' ? 'Block_' + selectedBlock : 'All_Blocks'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const suggestedName = `Society_${reportType === 'collection' ? 'Collection' : 'Due'}_Report_${selectedBlock !== 'All' ? 'Block_' + selectedBlock : 'All_Blocks'}.csv`;
+      const filePath = await save({
+        filters: [{ name: 'CSV File', extensions: ['csv'] }],
+        defaultPath: suggestedName
+      });
+      
+      if (filePath) {
+        await writeTextFile(filePath, csv);
+        toast.success("Exported successfully! Opening file...");
+        await open(filePath);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Error exporting file.");
+      
+      // Web fallback if Tauri APIs fail
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Society_${reportType === 'collection' ? 'Collection' : 'Due'}_Report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   const filteredFlats = flatData.filter(r => 
