@@ -16,6 +16,7 @@ export default function CSVImport() {
   });
   const [allFlats, setAllFlats] = useState([]);
   const [masterDataLoaded, setMasterDataLoaded] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
 
   useEffect(() => {
     sessionStorage.setItem('csvRows', JSON.stringify(rows));
@@ -165,6 +166,22 @@ export default function CSVImport() {
     return sortable;
   }, [rows, sortConfig]);
 
+  const importSummary = React.useMemo(() => {
+    return rows.reduce((summary, row) => {
+      summary.total += 1;
+      summary.amount += row.amount;
+      summary[row.status] += 1;
+      return summary;
+    }, { total: 0, amount: 0, match: 0, 'needs-allocation': 0, unmapped: 0 });
+  }, [rows]);
+
+  const canApproveRow = (row) => {
+    if (row.selectedFlats.length === 0) return false;
+    if (row.selectedFlats.length <= 1) return true;
+    const totalSplit = row.selectedFlats.reduce((sum, f) => sum + (row.splitAmounts[f] || 0), 0);
+    return Math.abs(totalSplit - row.amount) < 0.01;
+  };
+
   const approvePayment = async (row) => {
     // Real DB update to reflect in Dashboard
     const db = await getDb();
@@ -224,11 +241,76 @@ export default function CSVImport() {
     }
   };
 
+  const removeRow = (rowId) => {
+    setRows(prev => prev.filter(r => r.id !== rowId));
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      next.delete(rowId);
+      return next;
+    });
+  };
+
+  const toggleRowSelection = (rowId) => {
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedRowIds.size === sortedRows.length) {
+      setSelectedRowIds(new Set());
+    } else {
+      setSelectedRowIds(new Set(sortedRows.map(r => r.id)));
+    }
+  };
+
+  const approveSelectedPayments = async () => {
+    const selectedRowsData = sortedRows.filter(r => selectedRowIds.has(r.id));
+    const readyRows = selectedRowsData.filter(canApproveRow);
+    
+    if (readyRows.length === 0) {
+      toast.error("No valid selected payments to approve. Ensure you've mapped flats.");
+      return;
+    }
+
+    for (const row of readyRows) {
+      await approvePayment(row);
+    }
+    setSelectedRowIds(new Set());
+  };
+
+  const approveReadyPayments = async () => {
+    const readyRows = sortedRows.filter(canApproveRow);
+    if (readyRows.length === 0) {
+      toast.error("No ready payments to approve.");
+      return;
+    }
+
+    for (const row of readyRows) {
+      await approvePayment(row);
+    }
+  };
+
   return (
     <div className="csv-import">
-      <div className="import-header">
-        <h2>CSV Import and Allocation</h2>
-        <div className="upload-btn-wrapper">
+      <div className="import-header flex-between mb-1" style={{flexWrap: 'wrap', gap: '1rem'}}>
+        <div>
+          <h2 className="section-title">CSV Import and Allocation</h2>
+          <p className="section-subtitle">Review incoming credits, map them to apartments, and approve wallet top-ups.</p>
+        </div>
+        <div className="toolbar flex-row gap-1 flex-wrap">
+          {rows.length > 0 && (
+            <>
+              {selectedRowIds.size > 0 && (
+                <button className="primary-btn" onClick={approveSelectedPayments}>Approve Selected ({selectedRowIds.size})</button>
+              )}
+              <button className="secondary-btn" onClick={approveReadyPayments}>Approve Ready</button>
+              <button className="secondary-btn" onClick={() => { setRows([]); setSelectedRowIds(new Set()); }}>Clear Queue</button>
+            </>
+          )}
           <label className="primary-btn" style={{cursor: masterDataLoaded ? 'pointer' : 'not-allowed', opacity: masterDataLoaded ? 1 : 0.6}}>
             {masterDataLoaded ? 'Import New CSV' : 'Loading Apartments...'}
             <input type="file" accept=".csv" disabled={!masterDataLoaded} style={{ display: 'none' }} onChange={handleFileUpload} />
@@ -236,7 +318,32 @@ export default function CSVImport() {
         </div>
       </div>
 
-      <div className="transactions-list full-width">
+      {rows.length > 0 && (
+        <div className="summary-grid">
+          <div className="summary-tile">
+            <div className="summary-label">Transactions</div>
+            <div className="summary-value">{importSummary.total}</div>
+          </div>
+          <div className="summary-tile">
+            <div className="summary-label">Total Credit</div>
+            <div className="summary-value">₹{importSummary.amount.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
+          </div>
+          <div className="summary-tile">
+            <div className="summary-label">Auto Matched</div>
+            <div className="summary-value">{importSummary.match}</div>
+          </div>
+          <div className="summary-tile">
+            <div className="summary-label">Needs Split</div>
+            <div className="summary-value">{importSummary['needs-allocation']}</div>
+          </div>
+          <div className="summary-tile">
+            <div className="summary-label">Unmapped</div>
+            <div className="summary-value">{importSummary.unmapped}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="table-scroll w-full mt-2">
         {rows.length === 0 ? (
           <div className="empty-state">
             <p>Upload a CSV bank statement to begin.</p>
@@ -244,11 +351,18 @@ export default function CSVImport() {
           </div>
         ) : (
           <table>
-            <thead>
+            <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
               <tr>
+                <th>
+                  <input 
+                    type="checkbox" 
+                    checked={rows.length > 0 && selectedRowIds.size === rows.length} 
+                    onChange={toggleAllSelection} 
+                  />
+                </th>
                 <th onClick={() => requestSort('date')} style={{cursor:'pointer'}}>Date {sortConfig.key === 'date' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                 <th onClick={() => requestSort('desc')} style={{cursor:'pointer'}}>Description {sortConfig.key === 'desc' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
-                <th onClick={() => requestSort('amount')} style={{cursor:'pointer'}}>Amount {sortConfig.key === 'amount' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                <th className="money" onClick={() => requestSort('amount')} style={{cursor:'pointer'}}>Amount {sortConfig.key === 'amount' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                 <th onClick={() => requestSort('status')} style={{cursor:'pointer'}}>Status {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}</th>
                 <th>Allocate to Flat(s)</th>
                 <th>Action</th>
@@ -261,9 +375,16 @@ export default function CSVImport() {
 
                 return (
                   <tr key={row.id} className={`status-row ${row.status}`}>
+                    <td>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedRowIds.has(row.id)} 
+                        onChange={() => toggleRowSelection(row.id)} 
+                      />
+                    </td>
                     <td>{row.date}</td>
                     <td className="desc-cell"><small>{row.desc}</small></td>
-                    <td>₹{row.amount}</td>
+                    <td className="money">₹{row.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     <td><span className={`status-badge ${row.status}`}>{row.status.replace('-', ' ')}</span></td>
                     <td className="inline-allocation">
                       <Select
@@ -303,13 +424,23 @@ export default function CSVImport() {
                       )}
                     </td>
                     <td>
-                      <button 
-                        className="action-btn" 
-                        disabled={row.selectedFlats.length === 0 || !isSplitBalanced}
-                        onClick={() => approvePayment(row)}
-                      >
-                        Approve
-                      </button>
+                      <div className="flex-row gap-05">
+                        <button 
+                          className="action-btn primary-btn" 
+                          disabled={!canApproveRow(row)}
+                          onClick={() => approvePayment(row)}
+                          style={{padding: '4px 8px'}}
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          className="action-btn"
+                          onClick={() => removeRow(row.id)}
+                          style={{padding: '4px 8px', backgroundColor: 'var(--error-color, #e74c3c)', color: 'white'}}
+                        >
+                          Skip
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

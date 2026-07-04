@@ -93,9 +93,9 @@ export default function TopupsHistory() {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+      <div className="dashboard-header flex-between mb-1">
         <h2>Top-up & Transaction History</h2>
-        <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+        <div className="flex-row gap-1 flex-wrap">
           <select value={selectedBlock} onChange={e => { setSelectedBlock(e.target.value); setSelectedFlat('All'); }}>
             <option value="All">All Blocks</option>
             {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
@@ -176,22 +176,22 @@ export default function TopupsHistory() {
         </div>
       )}
 
-      <div className="table-container" style={{marginTop: '2rem'}}>
+      <div className="table-scroll mt-2">
         {loading ? (
-          <div style={{padding: '2rem', textAlign: 'center'}}>Loading history...</div>
+          <div className="p-2 text-center">Loading history...</div>
         ) : (
           <table>
-            <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
+            <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
               <tr>
                 <th>Tx ID</th>
                 <th>Apprvl Date / Time</th>
                 <th>Bank Date</th>
                 <th>Block/Flat</th>
                 <th>Resident</th>
-                <th>Opening Bal.</th>
-                <th>Amount Paid (Cr)</th>
+                <th className="money">Opening Bal.</th>
+                <th className="money">Amount Paid (Cr)</th>
                 <th>Method of Payment</th>
-                <th>Closing Bal.</th>
+                <th className="money">Closing Bal.</th>
                 <th>Transaction Ref / Notes</th>
               </tr>
             </thead>
@@ -206,10 +206,10 @@ export default function TopupsHistory() {
                   <td>{t.transaction_date || '-'}</td>
                   <td>{t.block}-{t.flat_no}</td>
                   <td>{t.name}</td>
-                  <td>{t.opening_balance === 0 ? "0.00" : (t.opening_balance > 0 ? `₹${t.opening_balance} Dr` : `₹${Math.abs(t.opening_balance)} Cr`)}</td>
-                  <td style={{color: 'var(--primary-color)', fontWeight: 'bold'}}>+ ₹{t.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">{t.opening_balance === 0 ? "0.00" : (t.opening_balance > 0 ? `₹${t.opening_balance} Dr` : `₹${Math.abs(t.opening_balance)} Cr`)}</td>
+                  <td className="money" style={{color: 'var(--primary-color)', fontWeight: 'bold'}}>+ ₹{t.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   <td><span className="badge" style={{background: 'var(--bg-color)', color: 'var(--text-color)', border: '1px solid var(--border-color)'}}>{t.source}</span></td>
-                  <td style={{fontWeight: 'bold', color: t.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (t.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
+                  <td className="money fw-bold" style={{color: t.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (t.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
                     {t.closing_balance === 0 ? "0.00" : (t.closing_balance > 0 ? `₹${t.closing_balance} Dr` : `₹${Math.abs(t.closing_balance)} Cr`)}
                   </td>
                   <td><small>{t.transaction_id || '-'}</small></td>

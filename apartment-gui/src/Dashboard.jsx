@@ -224,7 +224,7 @@ export default function Dashboard() {
       
       <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem', marginTop: '1rem' }}>
         <div className="card stat-card" style={{borderLeft: '4px solid var(--primary-color)'}}>
-          <h3>Total Generated Dues</h3>
+          <h3>Total Billed Dues</h3>
           <div className="stat-value" style={{fontSize: '2.5rem', fontWeight: 'bold'}}>₹{stats.totalDue.toLocaleString()}</div>
           <p>Total value of all bills ever generated</p>
         </div>
@@ -234,20 +234,20 @@ export default function Dashboard() {
           <p>Total money received through top-ups</p>
         </div>
         <div className="card stat-card" style={{borderLeft: '4px solid #e74c3c'}}>
-          <h3>Outstanding Receivables</h3>
+          <h3>Outstanding</h3>
           <div className="stat-value" style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#c0392b'}}>₹{stats.outstanding.toLocaleString()}</div>
           <p>Total amount currently owed by residents</p>
         </div>
         <div className="card stat-card" style={{borderLeft: '4px solid #f39c12'}}>
-          <h3>Unallocated Advance Credit</h3>
+          <h3>Advance Credit</h3>
           <div className="stat-value" style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#f39c12'}}>₹{stats.totalCredit.toLocaleString()}</div>
           <p>Resident top-ups waiting to be settled</p>
         </div>
       </div>
 
-      <div className="card" style={{marginTop: '2rem', padding: '0'}}>
-        <div style={{padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between'}}>
-          <div style={{display: 'flex', gap: '1rem', alignItems: 'center'}}>
+      <div className="card mt-2 p-0" style={{padding: '0'}}>
+        <div className="flex-between p-1" style={{borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', gap: '1rem'}}>
+          <div className="flex-row gap-1" style={{flexWrap: 'wrap'}}>
             <select value={reportType} onChange={e => setReportType(e.target.value)} style={{fontWeight: 'bold', fontSize: '1.1rem', border: 'none', background: 'transparent', outline: 'none'}}>
               <option value="collection">Collection Report (Flat-wise)</option>
               <option value="due">Itemized Due Report (Outstanding)</option>
@@ -283,20 +283,20 @@ export default function Dashboard() {
           <button className="primary-btn" onClick={exportToCSV} style={{padding: '0.4rem 1rem'}}>Export to Excel/CSV</button>
         </div>
         
-        <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+        <div className="table-scroll">
           {loading ? (
-             <div style={{padding: '2rem', textAlign: 'center'}}>Loading report...</div>
+             <div className="p-2 text-center">Loading report...</div>
           ) : reportType === 'collection' ? (
             <table className="report-table">
-              <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
+              <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
                 <tr>
                   <th>Block ID</th>
                   <th>Flat No</th>
                   <th>Resident Name</th>
-                  <th style={{textAlign:'right'}}>Opening Balance</th>
-                  <th style={{textAlign:'right'}}>Amount Due</th>
-                  <th style={{textAlign:'right'}}>Amount Paid</th>
-                  <th style={{textAlign:'right'}}>Closing Balance</th>
+                  <th className="money">Opening Balance</th>
+                  <th className="money">Amount Due</th>
+                  <th className="money">Amount Paid</th>
+                  <th className="money">Closing Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -314,36 +314,36 @@ export default function Dashboard() {
                       <td style={{fontWeight: isNewBlock ? 'bold' : 'normal'}}>{isNewBlock ? `⊞ ${row.block}` : ''}</td>
                       <td>{row.flat}</td>
                       <td>{row.name}</td>
-                      <td style={{textAlign:'right'}}>
+                      <td className="money">
                         {row.opening === 0 ? "0.00" : (row.opening > 0 ? `₹${row.opening.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(row.opening).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`)}
                       </td>
-                      <td style={{textAlign:'right'}}>₹{row.due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right', color: 'var(--primary-color)'}}>₹{row.paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right', fontWeight: 'bold', color: row.closing > 0 ? 'var(--error-color, #e74c3c)' : (row.closing < 0 ? '#27ae60' : 'inherit')}}>{outText}</td>
+                      <td className="money">₹{row.due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td className="money" style={{color: 'var(--primary-color)'}}>₹{row.paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td className="money fw-bold" style={{color: row.closing > 0 ? 'var(--error-color, #e74c3c)' : (row.closing < 0 ? '#27ae60' : 'inherit')}}>{outText}</td>
                     </tr>
                   );
                 })}
                 <tr style={{fontWeight: 'bold', backgroundColor: 'var(--bg-color)'}}>
                   <td colSpan="3">Total Result</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalOp.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalPaid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>{grandTotalOut === 0 ? "0.00" : (grandTotalOut > 0 ? `₹${grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(grandTotalOut).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`)}</td>
+                  <td className="money">₹{grandTotalOp.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">₹{grandTotalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">₹{grandTotalPaid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">{grandTotalOut === 0 ? "0.00" : (grandTotalOut > 0 ? `₹${grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(grandTotalOut).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`)}</td>
                 </tr>
               </tbody>
             </table>
           ) : (
             <table className="report-table">
-              <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
+              <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
                 <tr>
                   <th>Block ID</th>
                   <th>Flat No</th>
                   <th>Resident Name</th>
                   <th>Charge Head</th>
                   <th>Period</th>
-                  <th style={{textAlign:'right'}}>Amount Due</th>
-                  <th style={{textAlign:'right'}}>Amount Paid</th>
-                  <th style={{textAlign:'right'}}>Balance</th>
+                  <th className="money">Amount Due</th>
+                  <th className="money">Amount Paid</th>
+                  <th className="money">Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,17 +359,17 @@ export default function Dashboard() {
                       <td>{row.name}</td>
                       <td>{row.head}</td>
                       <td>{row.period}</td>
-                      <td style={{textAlign:'right'}}>₹{row.total_due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right'}}>₹{row.total_paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right', fontWeight: 'bold', color: 'var(--error-color, #e74c3c)'}}>₹{row.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td className="money">₹{row.total_due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td className="money">₹{row.total_paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td className="money fw-bold" style={{color: 'var(--error-color, #e74c3c)'}}>₹{row.balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                     </tr>
                   );
                 })}
                 <tr style={{fontWeight: 'bold', backgroundColor: 'var(--bg-color)'}}>
                   <td colSpan="5">Total Result</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalPaid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                  <td style={{textAlign:'right'}}>₹{grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">₹{grandTotalDue.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">₹{grandTotalPaid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                  <td className="money">₹{grandTotalOut.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                 </tr>
               </tbody>
             </table>

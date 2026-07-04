@@ -54,7 +54,7 @@ export default function Residents() {
 
   return (
     <div className="residents-management">
-      <div className="dashboard-header">
+      <div className="dashboard-header flex-between mb-1">
         <h2>Apartment Management</h2>
         <input 
           type="text" 
@@ -67,9 +67,9 @@ export default function Residents() {
 
       <div className="card">
         <p>Assign Names and Payment Handles (like UPI IDs or Exact Bank Names) so the CSV Auto-importer can learn and map payments perfectly. You can soft-delete non-existent flats here.</p>
-        <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+        <div className="table-scroll mt-1">
           <table>
-            <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
+            <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
               <tr>
                 <th>Flat</th>
                 <th>Resident Name</th>
@@ -112,7 +112,7 @@ export default function Residents() {
                     />
                   </td>
                   <td>
-                    {res.archived === 1 ? 'Deleted' : 'Active'}
+                    {res.archived === 1 ? <span className="badge" style={{background:'var(--error-color, #e74c3c)', color: 'white'}}>Deleted</span> : <span className="badge" style={{background:'#2ecc71', color: 'white'}}>Active</span>}
                   </td>
                   <td>
                     <button 

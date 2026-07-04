@@ -16,6 +16,7 @@ export default function Ledger() {
   const [dues, setDues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'block', direction: 'asc' });
+  const [pendingSettlement, setPendingSettlement] = useState(null);
 
 
 
@@ -108,12 +109,18 @@ export default function Ledger() {
     }
     
     const amtToSettle = Math.min(owed, avail);
-    const confirmMsg = `Settle ₹${amtToSettle} of this ₹${owed} bill using the flat's available credit of ₹${avail}?`;
-    
-    if (!window.confirm(confirmMsg)) return;
+    setPendingSettlement({ due, amount: amtToSettle, owed, available: avail });
+  };
 
+  const confirmSettlement = async () => {
+    if (!pendingSettlement) return;
     try {
-      const result = await settleDue({ dueId: due.unique_id, residentId: due.res_id, amount: amtToSettle });
+      const result = await settleDue({
+        dueId: pendingSettlement.due.unique_id,
+        residentId: pendingSettlement.due.res_id,
+        amount: pendingSettlement.amount
+      });
+      setPendingSettlement(null);
       loadData();
       toast.success(`Settled ₹${result.amountSettled} for this bill`);
     } catch (e) {
@@ -127,10 +134,13 @@ export default function Ledger() {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h2>Dues & Payments Ledger</h2>
+        <div>
+          <h2 className="section-title">Dues & Payments Ledger</h2>
+          <p className="section-subtitle">Settle billed dues using each apartment's available wallet credit.</p>
+        </div>
       </div>
 
-      <div className="filters" style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap'}}>
+      <div className="filters flex-row gap-1 mb-1 flex-wrap">
           <select value={selectedBlock} onChange={e => { setSelectedBlock(e.target.value); setSelectedFlat('All'); }}>
             <option value="All">All Blocks</option>
             {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
@@ -171,7 +181,7 @@ export default function Ledger() {
           </div>
         ) : (
           <table>
-            <thead>
+            <thead className="sticky-header" style={{ position: 'sticky', top: 0, backgroundColor: 'var(--card-bg)' }}>
               <tr>
                 <th onClick={() => requestSort('block')} style={{cursor:'pointer'}}>Block/Flat {sortConfig.key === 'block' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('name')} style={{cursor:'pointer'}}>Resident Name {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
@@ -192,12 +202,12 @@ export default function Ledger() {
                   <tr key={due.unique_id}>
                     <td>{due.block}-{due.flat}</td>
                     <td>{due.name}</td>
-                    <td>{due.opening_balance === 0 ? "0.00" : (due.opening_balance > 0 ? `₹${due.opening_balance} Dr` : `₹${Math.abs(due.opening_balance)} Cr`)}</td>
+                    <td className="money">{due.opening_balance === 0 ? "0.00" : (due.opening_balance > 0 ? `₹${due.opening_balance} Dr` : `₹${Math.abs(due.opening_balance)} Cr`)}</td>
                     <td>{due.head}</td>
                     <td>{due.months_list}</td>
-                    <td>₹{due.total_due}</td>
-                    <td style={{color: 'var(--primary-color)'}}>₹{due.total_paid || 0}</td>
-                    <td style={{fontWeight: 'bold', color: due.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (due.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
+                    <td className="money">₹{due.total_due}</td>
+                    <td className="money" style={{color: 'var(--primary-color)'}}>₹{due.total_paid || 0}</td>
+                    <td className="money" style={{fontWeight: 'bold', color: due.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (due.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
                       {due.closing_balance === 0 ? "0.00" : (due.closing_balance > 0 ? `₹${due.closing_balance} Dr` : `₹${Math.abs(due.closing_balance)} Cr`)}
                     </td>
                     <td><span className={`badge ${due.status.toLowerCase()}`}>{due.status}</span></td>
@@ -222,6 +232,35 @@ export default function Ledger() {
           </table>
         )}
       </div>
+
+      {pendingSettlement && (
+        <div className="modal-overlay">
+          <div className="modal card">
+            <h3>Settle Due</h3>
+            <p className="section-subtitle">
+              {pendingSettlement.due.block}-{pendingSettlement.due.flat} · {pendingSettlement.due.head} · {pendingSettlement.due.months_list}
+            </p>
+            <div className="summary-grid mt-1">
+              <div className="summary-tile">
+                <div className="summary-label">Outstanding</div>
+                <div className="summary-value">₹{pendingSettlement.owed.toLocaleString()}</div>
+              </div>
+              <div className="summary-tile">
+                <div className="summary-label">Wallet Credit</div>
+                <div className="summary-value">₹{pendingSettlement.available.toLocaleString()}</div>
+              </div>
+              <div className="summary-tile">
+                <div className="summary-label">Settle Now</div>
+                <div className="summary-value">₹{pendingSettlement.amount.toLocaleString()}</div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="secondary-btn" onClick={() => setPendingSettlement(null)}>Cancel</button>
+              <button className="primary-btn" onClick={confirmSettlement}>Confirm Settlement</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
