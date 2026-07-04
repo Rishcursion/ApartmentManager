@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb } from './db';
+import { getDb, getResidentLedger } from './db';
 import toast from 'react-hot-toast';
 
 export default function TopupsHistory() {
@@ -33,14 +33,13 @@ export default function TopupsHistory() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const db = await getDb();
-      const rows = await db.select(`
-        SELECT t.*, r.block, r.flat_no, r.name 
-        FROM topups t
-        JOIN residents r ON t.resident_id = r.id
-        ORDER BY t.id DESC
-      `);
-      setTopups(rows);
+      const allEvents = await getResidentLedger();
+      const topupsEvents = allEvents.filter(e => e.type === 'topup').map(e => ({
+        ...e.data,
+        opening_balance: e.opening_balance,
+        closing_balance: e.closing_balance
+      })).reverse(); // Sort descending chronologically
+      setTopups(topupsEvents);
     } catch (e) {
       console.error(e);
     }
@@ -145,8 +144,10 @@ export default function TopupsHistory() {
                 <th>Bank Date</th>
                 <th>Block/Flat</th>
                 <th>Resident</th>
-                <th>Amount (₹)</th>
+                <th>Opening Bal.</th>
+                <th>Amount Paid (Cr)</th>
                 <th>Method of Payment</th>
+                <th>Closing Bal.</th>
                 <th>Transaction Ref / Notes</th>
               </tr>
             </thead>
@@ -161,14 +162,18 @@ export default function TopupsHistory() {
                   <td>{t.transaction_date || '-'}</td>
                   <td>{t.block}-{t.flat_no}</td>
                   <td>{t.name}</td>
+                  <td>{t.opening_balance === 0 ? "0.00" : (t.opening_balance > 0 ? `₹${t.opening_balance} Dr` : `₹${Math.abs(t.opening_balance)} Cr`)}</td>
                   <td style={{color: 'var(--primary-color)', fontWeight: 'bold'}}>+ ₹{t.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                   <td><span className="badge" style={{background: 'var(--bg-color)', color: 'var(--text-color)', border: '1px solid var(--border-color)'}}>{t.source}</span></td>
+                  <td style={{fontWeight: 'bold', color: t.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (t.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
+                    {t.closing_balance === 0 ? "0.00" : (t.closing_balance > 0 ? `₹${t.closing_balance} Dr` : `₹${Math.abs(t.closing_balance)} Cr`)}
+                  </td>
                   <td><small>{t.transaction_id || '-'}</small></td>
                 </tr>
                 );
               })}
               {topups.length === 0 && (
-                <tr><td colSpan="8" style={{textAlign: 'center', padding: '2rem'}}>No transactions found yet. Import a CSV or add a manual payment!</td></tr>
+                <tr><td colSpan="10" style={{textAlign: 'center', padding: '2rem'}}>No transactions found yet. Import a CSV or add a manual payment!</td></tr>
               )}
             </tbody>
           </table>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb } from './db';
+import { getDb, getResidentLedger } from './db';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
@@ -24,39 +24,36 @@ export default function Dashboard() {
       const cats = await db.select("SELECT * FROM fee_categories");
       setCategories(cats);
 
-      let query = `
-        SELECT 
-          d.id as unique_id,
-          r.id as res_id, r.block, CAST(r.flat_no AS INTEGER) as flat_num, r.flat_no as flat, r.name, r.credit_balance,
-          c.name as head, 
-          d.amount as total_due,
-          d.paid_amount as total_paid,
-          (d.amount - d.paid_amount) as cumulative_due,
-          d.month || ' ' || d.fiscal_year as months_list,
-          d.status
-        FROM dues d
-        JOIN residents r ON d.resident_id = r.id
-        JOIN fee_categories c ON d.fee_category_id = c.id
-        WHERE r.archived = 0
-      `;
+      const allEvents = await getResidentLedger();
+      let realDues = allEvents.filter(e => e.type === 'due').map(e => ({
+        unique_id: e.data.id,
+        res_id: e.data.resident_id,
+        block: e.data.block,
+        flat_num: parseInt(e.data.flat_no),
+        flat: e.data.flat_no,
+        name: e.data.name,
+        credit_balance: e.data.credit_balance,
+        head: e.data.head,
+        total_due: e.data.amount,
+        total_paid: e.data.paid_amount,
+        cumulative_due: e.data.amount - e.data.paid_amount,
+        months_list: e.data.month + ' ' + e.data.fiscal_year,
+        status: e.data.status,
+        opening_balance: e.opening_balance,
+        closing_balance: e.closing_balance
+      }));
 
       if (viewMode === 'outstanding') {
-        query += " AND (d.status != 'Paid' OR d.amount - d.paid_amount > 0)";
+        realDues = realDues.filter(d => d.status !== 'Paid' || d.cumulative_due > 0);
       } else if (viewMode === 'settled') {
-        query += " AND (d.status = 'Paid' OR d.amount - d.paid_amount <= 0)";
+        realDues = realDues.filter(d => d.status === 'Paid' || d.cumulative_due <= 0);
       }
-
-      let params = [];
 
       if (selectedCategory !== 'All') {
-        query += " AND c.name = ?";
-        params.push(selectedCategory);
+        realDues = realDues.filter(d => d.head === selectedCategory);
       }
       
-      query += " ORDER BY r.block, CAST(r.flat_no AS INTEGER), d.id DESC";
-      
-      const realDues = await db.select(query, params);
-      setDues(realDues);
+      setDues(realDues.reverse()); // default sort descending chronologically
     } catch (e) {
       console.error(e);
     }
@@ -152,12 +149,12 @@ export default function Dashboard() {
               <tr>
                 <th onClick={() => requestSort('block')} style={{cursor:'pointer'}}>Block/Flat {sortConfig.key === 'block' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('name')} style={{cursor:'pointer'}}>Resident Name {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                <th onClick={() => requestSort('credit_balance')} style={{cursor:'pointer'}}>Avail. Credit {sortConfig.key === 'credit_balance' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th onClick={() => requestSort('opening_balance')} style={{cursor:'pointer'}}>Opening Bal. {sortConfig.key === 'opening_balance' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('head')} style={{cursor:'pointer'}}>Charge/Head {sortConfig.key === 'head' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('months_list')} style={{cursor:'pointer'}}>Period {sortConfig.key === 'months_list' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('total_due')} style={{cursor:'pointer'}}>Amount Due {sortConfig.key === 'total_due' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('total_paid')} style={{cursor:'pointer'}}>Amount Paid {sortConfig.key === 'total_paid' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
-                <th onClick={() => requestSort('cumulative_due')} style={{cursor:'pointer'}}>Balance {sortConfig.key === 'cumulative_due' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
+                <th onClick={() => requestSort('closing_balance')} style={{cursor:'pointer'}}>Closing Bal. {sortConfig.key === 'closing_balance' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th onClick={() => requestSort('status')} style={{cursor:'pointer'}}>Status {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}</th>
                 <th>Action</th>
               </tr>
@@ -169,13 +166,13 @@ export default function Dashboard() {
                   <tr key={due.unique_id}>
                     <td>{due.block}-{due.flat}</td>
                     <td>{due.name}</td>
-                    <td style={{color: 'var(--primary-color)', fontWeight: 'bold'}}>₹{due.credit_balance || 0}</td>
+                    <td>{due.opening_balance === 0 ? "0.00" : (due.opening_balance > 0 ? `₹${due.opening_balance} Dr` : `₹${Math.abs(due.opening_balance)} Cr`)}</td>
                     <td>{due.head}</td>
                     <td>{due.months_list}</td>
                     <td>₹{due.total_due}</td>
                     <td style={{color: 'var(--primary-color)'}}>₹{due.total_paid || 0}</td>
-                    <td style={{fontWeight: 'bold', color: isSettled ? '#7f8c8d' : 'var(--error-color, #e74c3c)'}}>
-                      ₹{due.cumulative_due}
+                    <td style={{fontWeight: 'bold', color: due.closing_balance > 0 ? 'var(--error-color, #e74c3c)' : (due.closing_balance < 0 ? '#27ae60' : 'inherit')}}>
+                      {due.closing_balance === 0 ? "0.00" : (due.closing_balance > 0 ? `₹${due.closing_balance} Dr` : `₹${Math.abs(due.closing_balance)} Cr`)}
                     </td>
                     <td><span className={`badge ${due.status.toLowerCase()}`}>{due.status}</span></td>
                     <td>

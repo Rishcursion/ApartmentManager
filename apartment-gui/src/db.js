@@ -113,3 +113,92 @@ export async function getDb() {
   if (!db) return await initDb();
   return db;
 }
+
+export async function getResidentLedger(residentId = null) {
+  const db = await getDb();
+  
+  let duesQuery = `
+    SELECT 
+      d.id, d.resident_id, d.amount, d.paid_amount, d.month, d.fiscal_year, d.status,
+      c.name as head, r.block, r.flat_no, r.name, r.credit_balance
+    FROM dues d
+    JOIN residents r ON d.resident_id = r.id
+    JOIN fee_categories c ON d.fee_category_id = c.id
+    WHERE r.archived = 0
+  `;
+  if (residentId) duesQuery += ` AND d.resident_id = ${residentId}`;
+  const dues = await db.select(duesQuery);
+  
+  let topupsQuery = `
+    SELECT 
+      t.id, t.resident_id, t.amount, t.source, t.transaction_id, t.transaction_date, t.created_at,
+      r.block, r.flat_no, r.name
+    FROM topups t
+    JOIN residents r ON t.resident_id = r.id
+  `;
+  if (residentId) topupsQuery += ` AND t.resident_id = ${residentId}`;
+  const topups = await db.select(topupsQuery);
+  
+  const monthMap = { "January":1, "February":2, "March":3, "April":4, "May":5, "June":6, "July":7, "August":8, "September":9, "October":10, "November":11, "December":12 };
+  
+  const events = [];
+  
+  dues.forEach(d => {
+    let year = 1970;
+    let mIdx = 1;
+    if (d.fiscal_year && d.month) {
+      mIdx = monthMap[d.month] || 1;
+      const years = d.fiscal_year.split('-');
+      if (years.length === 2) {
+        year = parseInt(mIdx >= 4 ? years[0] : years[1]);
+      }
+    }
+    const dateStr = `${year}-${String(mIdx).padStart(2, '0')}-01T00:00:00Z`;
+    events.push({
+      type: 'due',
+      date: new Date(dateStr).getTime() || 0,
+      timestamp: dateStr,
+      data: d,
+      resident_id: d.resident_id
+    });
+  });
+  
+  topups.forEach(t => {
+    let rawDate = t.transaction_date || t.created_at || '';
+    if (!rawDate.includes('T') && rawDate.includes(' ')) {
+      rawDate = rawDate.replace(' ', 'T');
+    }
+    if (!rawDate.endsWith('Z') && rawDate.includes('T')) {
+      rawDate += 'Z';
+    }
+    events.push({
+      type: 'topup',
+      date: new Date(rawDate).getTime() || 0,
+      timestamp: rawDate,
+      data: t,
+      resident_id: t.resident_id
+    });
+  });
+  
+  events.sort((a, b) => {
+    if (a.date !== b.date) return a.date - b.date;
+    return a.data.id - b.data.id;
+  });
+  
+  const balances = {};
+  
+  events.forEach(e => {
+    const resId = e.resident_id;
+    if (balances[resId] === undefined) balances[resId] = 0;
+    
+    e.opening_balance = balances[resId];
+    if (e.type === 'due') {
+      balances[resId] += e.data.amount;
+    } else {
+      balances[resId] -= e.data.amount;
+    }
+    e.closing_balance = balances[resId];
+  });
+  
+  return events;
+}
