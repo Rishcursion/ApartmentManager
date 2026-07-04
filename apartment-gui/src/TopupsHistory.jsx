@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb, getResidentLedger, getPeriodDates } from './db';
+import { getDb, getResidentLedger, getPeriodDates, recordTopup } from './db';
 import toast from 'react-hot-toast';
 
 export default function TopupsHistory() {
@@ -44,6 +44,7 @@ export default function TopupsHistory() {
       
       const resData = await db.select("SELECT id, block, flat_no, name FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
       setAllResidents(resData);
+      if (!manualResId && resData.length > 0) setManualResId(String(resData[0].id));
 
       const allEvents = await getResidentLedger();
       const topupsEvents = allEvents.filter(e => e.type === 'topup').map(e => ({
@@ -67,15 +68,23 @@ export default function TopupsHistory() {
     }
     
     try {
-      const db = await getDb();
-      await db.execute("UPDATE residents SET credit_balance = credit_balance + ? WHERE id = ?", [Number(manualAmount), manualResId]);
       const today = new Date().toISOString().split('T')[0];
-      await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id, transaction_date) VALUES (?, ?, ?, ?, ?)", [manualResId, Number(manualAmount), manualSource, manualRef, today]);
-      toast.success("Payment manually added to flat's credit balance!");
-      setManualAmount('');
-      setManualRef('');
-      setShowManualModal(false);
-      loadData();
+      const result = await recordTopup({
+        residentId: manualResId,
+        amount: Number(manualAmount),
+        source: manualSource,
+        transactionId: manualRef,
+        transactionDate: today
+      });
+      if (result.inserted) {
+        toast.success("Payment manually added to flat's credit balance!");
+        setManualAmount('');
+        setManualRef('');
+        setShowManualModal(false);
+        loadData();
+      } else {
+        toast.error("This manual payment already exists.");
+      }
     } catch (e) {
       console.error(e);
       toast.error("Error saving manual payment.");
@@ -207,8 +216,10 @@ export default function TopupsHistory() {
                 </tr>
                 );
               })}
-              {topups.length === 0 && (
-                <tr><td colSpan="10" style={{textAlign: 'center', padding: '2rem'}}>No transactions found yet. Import a CSV or add a manual payment!</td></tr>
+              {filteredTopups.length === 0 && (
+                <tr><td colSpan="10" style={{textAlign: 'center', padding: '2rem'}}>
+                  {topups.length === 0 ? 'No transactions found yet. Import a CSV or add a manual payment!' : 'No transactions match the selected filters.'}
+                </td></tr>
               )}
             </tbody>
           </table>

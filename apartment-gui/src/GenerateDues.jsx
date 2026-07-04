@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb } from './db';
+import { getDb, withTransaction } from './db';
 import toast from 'react-hot-toast';
 
 export default function GenerateDues() {
@@ -10,7 +10,7 @@ export default function GenerateDues() {
   const [targetType, setTargetType] = useState('ALL'); // ALL or SPECIFIC
   const [selectedFlat, setSelectedFlat] = useState('');
   const [month, setMonth] = useState('');
-  const [fiscalYear, setFiscalYear] = useState('FY26-27');
+  const [fiscalYear, setFiscalYear] = useState('2026-27');
   
   const [variableAmounts, setVariableAmounts] = useState({});
 
@@ -36,7 +36,6 @@ export default function GenerateDues() {
     e.preventDefault();
     if (!selectedCategory || !month || !fiscalYear) return;
     
-    const db = await getDb();
     const category = categories.find(c => c.id.toString() === selectedCategory.toString());
     if (!category) return;
 
@@ -54,17 +53,38 @@ export default function GenerateDues() {
     }
 
     try {
-      // Bulk insert dues
-      for (const res of targets) {
-        const amountToCharge = category.is_variable === 1 ? (parseFloat(variableAmounts[res.id]) || 0) : category.amount;
-        if (amountToCharge > 0) {
-          await db.execute(
+      let inserted = 0;
+      let skipped = 0;
+
+      await withTransaction(async (tx) => {
+        for (const res of targets) {
+          const amountToCharge = category.is_variable === 1 ? (parseFloat(variableAmounts[res.id]) || 0) : category.amount;
+          if (amountToCharge <= 0) continue;
+
+          const existing = await tx.select(
+            `SELECT id FROM dues
+             WHERE resident_id = ? AND fee_category_id = ? AND month = ? AND fiscal_year = ?
+             LIMIT 1`,
+            [res.id, category.id, month, fiscalYear]
+          );
+          if (existing.length > 0) {
+            skipped += 1;
+            continue;
+          }
+
+          await tx.execute(
             "INSERT INTO dues (resident_id, fee_category_id, month, fiscal_year, amount, status) VALUES (?, ?, ?, ?, ?, 'Unpaid')",
             [res.id, category.id, month, fiscalYear, amountToCharge]
           );
+          inserted += 1;
         }
+      });
+
+      if (inserted === 0 && skipped > 0) {
+        toast.error(`No dues generated. ${skipped} existing due(s) already match ${month} ${fiscalYear}.`);
+      } else {
+        toast.success(`Generated dues for ${inserted} apartment(s).${skipped ? ` Skipped ${skipped} duplicate(s).` : ''}`);
       }
-      toast.success(`Successfully generated dues for ${targets.length} apartment(s) for ${month} ${fiscalYear}!`);
       setVariableAmounts({});
     } catch (e) {
       console.error(e);

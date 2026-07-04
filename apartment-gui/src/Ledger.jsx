@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getDb, getResidentLedger, getPeriodDates } from './db';
+import { getDb, getResidentLedger, getPeriodDates, settleDue } from './db';
 import toast from 'react-hot-toast';
 
-export default function Dashboard() {
+export default function Ledger() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState('outstanding'); // outstanding, settled, all
@@ -113,15 +113,9 @@ export default function Dashboard() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const db = await getDb();
-      const newPaid = due.total_paid + amtToSettle;
-      const newStatus = newPaid >= due.total_due ? 'Paid' : 'Partial';
-      
-      await db.execute("UPDATE dues SET paid_amount = ?, status = ? WHERE id = ?", [newPaid, newStatus, due.unique_id]);
-      await db.execute("UPDATE residents SET credit_balance = credit_balance - ? WHERE id = ?", [amtToSettle, due.res_id]);
-      
+      const result = await settleDue({ dueId: due.unique_id, residentId: due.res_id, amount: amtToSettle });
       loadData();
-      toast.success(`Settled ₹${amtToSettle} for this bill`);
+      toast.success(`Settled ₹${result.amountSettled} for this bill`);
     } catch (e) {
       console.error(e);
       toast.error("Error settling due.");

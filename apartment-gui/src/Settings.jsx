@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDb } from './db';
+import { DEFAULT_APARTMENT_LAYOUT, getApartmentLayout, getDb, saveApartmentLayout } from './db';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
@@ -8,9 +8,11 @@ export default function Settings() {
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('Monthly');
   const [isVariable, setIsVariable] = useState(false);
+  const [layoutJson, setLayoutJson] = useState(JSON.stringify(DEFAULT_APARTMENT_LAYOUT, null, 2));
 
   useEffect(() => {
     loadCategories();
+    loadApartmentLayout();
   }, []);
 
   const loadCategories = async () => {
@@ -20,6 +22,33 @@ export default function Settings() {
       setCategories(result);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const loadApartmentLayout = async () => {
+    try {
+      const layout = await getApartmentLayout();
+      setLayoutJson(JSON.stringify(layout, null, 2));
+    } catch (e) {
+      console.error(e);
+      toast.error("Error loading apartment layout");
+    }
+  };
+
+  const updateApartmentLayout = async (e) => {
+    e.preventDefault();
+    try {
+      const parsed = JSON.parse(layoutJson);
+      if (!Array.isArray(parsed)) {
+        toast.error("Layout must be a JSON array.");
+        return;
+      }
+      await saveApartmentLayout(parsed);
+      setLayoutJson(JSON.stringify(parsed, null, 2));
+      toast.success("Apartment layout saved and synced");
+    } catch (e) {
+      console.error(e);
+      toast.error(e instanceof SyntaxError ? "Invalid JSON layout." : `Error saving layout: ${e.message}`);
     }
   };
 
@@ -65,6 +94,7 @@ export default function Settings() {
       await db.execute('DROP TABLE IF EXISTS dues');
       await db.execute('DROP TABLE IF EXISTS fee_categories');
       await db.execute('DROP TABLE IF EXISTS residents');
+      await db.execute('DROP TABLE IF EXISTS app_settings');
       await db.execute('PRAGMA foreign_keys = ON');
       toast.success("Database wiped. The app will now reload to re-initialize an empty database.");
       setTimeout(() => window.location.reload(), 1500);
@@ -130,6 +160,21 @@ export default function Settings() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="card mt-2">
+        <h3>Apartment Layout</h3>
+        <p>Configure blocks and flat numbers. Ranges can be arrays like <code>[1, 15]</code> or objects like <code>{'{"from":101,"to":120,"pad":4}'}</code>; use <code>flats</code> for non-sequential numbers.</p>
+        <form onSubmit={updateApartmentLayout} style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+          <textarea
+            value={layoutJson}
+            onChange={e => setLayoutJson(e.target.value)}
+            rows={14}
+            spellCheck="false"
+            style={{fontFamily: 'monospace', padding: '0.75rem', background: 'var(--bg-color)', color: 'var(--text-color)', border: '1px solid var(--border-color)'}}
+          />
+          <button type="submit" className="primary-btn" style={{alignSelf: 'flex-start'}}>Save Apartment Layout</button>
+        </form>
       </div>
 
       <div className="card mt-2" style={{ border: '1px solid red', background: 'rgba(255, 0, 0, 0.05)' }}>

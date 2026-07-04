@@ -34,18 +34,25 @@ export default function Dashboard() {
       
       // Load top stats
       const duesRes = await db.select(`
-        SELECT SUM(d.amount) as total_due, SUM(d.paid_amount) as total_paid
+        SELECT SUM(d.amount) as total_due, SUM(d.paid_amount) as total_allocated
         FROM dues d
         JOIN residents r ON d.resident_id = r.id
         WHERE r.archived = 0
       `);
       const creditRes = await db.select(`SELECT SUM(credit_balance) as total_credit FROM residents WHERE archived = 0`);
+      const collectedRes = await db.select(`
+        SELECT SUM(t.amount) as total_collected
+        FROM topups t
+        JOIN residents r ON t.resident_id = r.id
+        WHERE r.archived = 0
+      `);
       
       const tDue = duesRes[0]?.total_due || 0;
-      const tPaid = duesRes[0]?.total_paid || 0;
+      const tAllocated = duesRes[0]?.total_allocated || 0;
       setStats({
-        totalDue: tDue, totalPaid: tPaid,
-        outstanding: tDue - tPaid,
+        totalDue: tDue,
+        totalPaid: collectedRes[0]?.total_collected || 0,
+        outstanding: tDue - tAllocated,
         totalCredit: creditRes[0]?.total_credit || 0
       });
 
@@ -62,11 +69,28 @@ export default function Dashboard() {
       const resData = await db.select("SELECT id, block, flat_no, name FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
       setAllResidents(resData);
 
-      let fyFilter = selectedFY !== 'All' ? ` AND d.fiscal_year = '${selectedFY}'` : '';
-      let monthFilter = selectedMonth !== 'All' ? ` AND d.month = '${selectedMonth}'` : '';
-      let catFilter = selectedCategory !== 'All' ? ` AND c.name = '${selectedCategory.replace(/'/g, "''")}'` : '';
-      let blockFilter = selectedBlock !== 'All' ? ` AND r.block = '${selectedBlock.replace(/'/g, "''")}'` : '';
-      let flatFilter = selectedFlat !== 'All' ? ` AND r.flat_no = '${selectedFlat.replace(/'/g, "''")}'` : '';
+      const dueFilters = [];
+      const dueParams = [];
+      if (selectedFY !== 'All') {
+        dueFilters.push('d.fiscal_year = ?');
+        dueParams.push(selectedFY);
+      }
+      if (selectedMonth !== 'All') {
+        dueFilters.push('d.month = ?');
+        dueParams.push(selectedMonth);
+      }
+      if (selectedCategory !== 'All') {
+        dueFilters.push('c.name = ?');
+        dueParams.push(selectedCategory);
+      }
+      if (selectedBlock !== 'All') {
+        dueFilters.push('r.block = ?');
+        dueParams.push(selectedBlock);
+      }
+      if (selectedFlat !== 'All') {
+        dueFilters.push('r.flat_no = ?');
+        dueParams.push(selectedFlat);
+      }
 
       if (reportType === 'collection') {
         const events = await getResidentLedger();
@@ -109,10 +133,10 @@ export default function Dashboard() {
           JOIN residents r ON d.resident_id = r.id
           JOIN fee_categories c ON d.fee_category_id = c.id
           WHERE r.archived = 0 AND d.amount > d.paid_amount
-          ${fyFilter} ${monthFilter} ${catFilter} ${blockFilter} ${flatFilter}
+          ${dueFilters.length > 0 ? `AND ${dueFilters.join(' AND ')}` : ''}
           ORDER BY r.block, CAST(r.flat_no AS INTEGER), d.id DESC
         `;
-        const rows = await db.select(dueReportQuery);
+        const rows = await db.select(dueReportQuery, dueParams);
         setDueData(rows);
       }
 
@@ -207,7 +231,7 @@ export default function Dashboard() {
         <div className="card stat-card" style={{borderLeft: '4px solid #2ecc71'}}>
           <h3>Total Collected</h3>
           <div className="stat-value" style={{fontSize: '2.5rem', fontWeight: 'bold', color: '#27ae60'}}>₹{stats.totalPaid.toLocaleString()}</div>
-          <p>Money successfully settled against bills</p>
+          <p>Total money received through top-ups</p>
         </div>
         <div className="card stat-card" style={{borderLeft: '4px solid #e74c3c'}}>
           <h3>Outstanding Receivables</h3>

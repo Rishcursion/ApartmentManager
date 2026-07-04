@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import Select from 'react-select';
-import { getDb } from './db';
+import { getDb, recordTopup } from './db';
 import toast from 'react-hot-toast';
 
 export default function CSVImport() {
   const [rows, setRows] = useState(() => {
     const saved = sessionStorage.getItem('csvRows');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
   });
   const [allFlats, setAllFlats] = useState([]);
-  const [flatOptions, setFlatOptions] = useState([]);
+  const [masterDataLoaded, setMasterDataLoaded] = useState(false);
 
   useEffect(() => {
     sessionStorage.setItem('csvRows', JSON.stringify(rows));
@@ -40,7 +45,7 @@ export default function CSVImport() {
     
     const generated = Array.from(generatedMap.values());
     setAllFlats(generated);
-    setFlatOptions(generated.map(f => f.id));
+    setMasterDataLoaded(true);
     console.log(`Loaded ${generated.length} unique flats from DB.`);
   };
 
@@ -48,6 +53,10 @@ export default function CSVImport() {
     const file = e.target.files[0];
     if (!file) {
       console.log("No file selected.");
+      return;
+    }
+    if (!masterDataLoaded) {
+      toast.error("Apartment data is still loading. Try again in a moment.");
       return;
     }
     console.log(`Starting parse for file: ${file.name}`);
@@ -168,6 +177,9 @@ export default function CSVImport() {
 
         if (selectedDbIds.length === 0) return;
 
+        let insertedCount = 0;
+        let duplicateCount = 0;
+
         for (const resId of selectedDbIds) {
           // Automatically learn the UPI handle if present in the description
           const upiMatch = row.desc.match(/([a-zA-Z0-9.\-_]+@[a-zA-Z]*)/);
@@ -187,16 +199,25 @@ export default function CSVImport() {
           let amtToCredit = row.selectedFlats.length > 1 ? (row.splitAmounts[allFlats.find(f=>f.dbId === resId).id] || 0) : row.amount;
           
           if (amtToCredit > 0) {
-            const res = await db.select("SELECT credit_balance FROM residents WHERE id = ?", [resId]);
-            const currentCredit = res[0]?.credit_balance || 0;
-            await db.execute("UPDATE residents SET credit_balance = ? WHERE id = ?", [currentCredit + amtToCredit, resId]);
-            await db.execute("INSERT INTO topups (resident_id, amount, source, transaction_id, transaction_date) VALUES (?, ?, ?, ?, ?)", [resId, amtToCredit, 'CSV Import', row.desc ? row.desc.substring(0, 50) : '', row.date || '']);
+            const result = await recordTopup({
+              residentId: resId,
+              amount: amtToCredit,
+              source: 'CSV Import',
+              transactionId: row.desc ? row.desc.substring(0, 50) : '',
+              transactionDate: row.date || ''
+            });
+            if (result.inserted) insertedCount += 1;
+            else duplicateCount += 1;
           }
         }
         
         // Remove from UI
         setRows(prev => prev.filter(r => r.id !== row.id));
-        toast.success("Payment approved and allocated");
+        if (insertedCount > 0) {
+          toast.success(`Payment approved.${duplicateCount ? ` Skipped ${duplicateCount} duplicate allocation(s).` : ''}`);
+        } else {
+          toast.error("No payment added. This transaction appears to be a duplicate.");
+        }
     } catch (e) {
       console.error(e);
       toast.error("Database error applying payment.");
@@ -208,9 +229,9 @@ export default function CSVImport() {
       <div className="import-header">
         <h2>CSV Import and Allocation</h2>
         <div className="upload-btn-wrapper">
-          <label className="primary-btn" style={{cursor: 'pointer'}}>
-            Import New CSV
-            <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileUpload} />
+          <label className="primary-btn" style={{cursor: masterDataLoaded ? 'pointer' : 'not-allowed', opacity: masterDataLoaded ? 1 : 0.6}}>
+            {masterDataLoaded ? 'Import New CSV' : 'Loading Apartments...'}
+            <input type="file" accept=".csv" disabled={!masterDataLoaded} style={{ display: 'none' }} onChange={handleFileUpload} />
           </label>
         </div>
       </div>

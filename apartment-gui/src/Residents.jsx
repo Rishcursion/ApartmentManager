@@ -17,6 +17,12 @@ export default function Residents() {
   };
 
   const updateResident = async (id, field, value) => {
+    const editableFields = new Set(['name', 'contact', 'payment_handles']);
+    if (!editableFields.has(field)) {
+      toast.error("Invalid field update");
+      return;
+    }
+
     try {
       const db = await getDb();
       await db.execute(`UPDATE residents SET ${field} = ? WHERE id = ?`, [value, id]);
