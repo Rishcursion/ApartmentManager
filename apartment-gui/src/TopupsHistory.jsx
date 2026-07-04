@@ -16,9 +16,11 @@ export default function TopupsHistory() {
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualResId, setManualResId] = useState('');
   const [manualAmount, setManualAmount] = useState('');
+  const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [manualSource, setManualSource] = useState('Cash');
   const [manualRef, setManualRef] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const { startDate, endDate } = getPeriodDates(selectedFY, selectedMonth);
 
@@ -62,11 +64,13 @@ export default function TopupsHistory() {
 
   const handleManualPayment = async (e) => {
     e.preventDefault();
+    if (isProcessing) return;
     if (!manualResId || !manualAmount || isNaN(manualAmount) || Number(manualAmount) <= 0) {
       toast.error("Please enter a valid amount.");
       return;
     }
     
+    setIsProcessing(true);
     try {
       const today = new Date().toISOString().split('T')[0];
       const result = await recordTopup({
@@ -74,7 +78,7 @@ export default function TopupsHistory() {
         amount: Number(manualAmount),
         source: manualSource,
         transactionId: manualRef,
-        transactionDate: today
+        transactionDate: manualDate || today
       });
       if (result.inserted) {
         toast.success("Payment manually added to flat's credit balance!");
@@ -87,7 +91,9 @@ export default function TopupsHistory() {
       }
     } catch (e) {
       console.error(e);
-      toast.error("Error saving manual payment.");
+      toast.error(`Error saving manual payment: ${e.message || e}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -157,19 +163,32 @@ export default function TopupsHistory() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label>Transaction ID / Notes (Optional)</label>
-                <input 
-                  type="text" 
-                  value={manualRef} 
-                  onChange={e => setManualRef(e.target.value)} 
-                  placeholder="e.g. Chq No, UPI Ref..."
-                  style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
-                />
+              <div style={{display: 'flex', gap: '1rem'}}>
+                <div style={{flex: 1}}>
+                  <label>Date Paid</label>
+                  <input 
+                    type="date" 
+                    value={manualDate} 
+                    onChange={e => setManualDate(e.target.value)} 
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </div>
+                <div style={{flex: 1}}>
+                  <label>Transaction ID / Notes</label>
+                  <input 
+                    type="text" 
+                    value={manualRef} 
+                    onChange={e => setManualRef(e.target.value)} 
+                    placeholder="e.g. Chq No, UPI Ref..."
+                    style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+                  />
+                </div>
               </div>
               <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                <button type="submit" className="primary-btn" style={{flex: 1}}>Add Funds</button>
-                <button type="button" onClick={() => setShowManualModal(false)} style={{flex: 1}}>Cancel</button>
+                <button type="submit" className="primary-btn" disabled={isProcessing} style={{flex: 1}}>
+                  {isProcessing ? 'Processing...' : 'Add Funds'}
+                </button>
+                <button type="button" disabled={isProcessing} onClick={() => setShowManualModal(false)} style={{flex: 1}}>Cancel</button>
               </div>
             </form>
           </div>

@@ -29,7 +29,7 @@ export default function Residents() {
       toast.success("Flat updated successfully");
       loadResidents();
     } catch (e) {
-      toast.error("Error updating flat");
+      toast.error(`Error updating flat: ${e.message || e}`);
       console.error(e);
     }
   };
@@ -41,7 +41,7 @@ export default function Residents() {
       toast.success(isArchived ? "Flat restored" : "Flat deleted");
       loadResidents();
     } catch (e) {
-      toast.error("Error toggling flat status");
+      toast.error(`Error toggling flat status: ${e.message || e}`);
       console.error(e);
     }
   };
