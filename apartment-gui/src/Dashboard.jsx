@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { getDb } from './db';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getDb, getResidentLedger } from './db';
 import toast from 'react-hot-toast';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -13,17 +13,19 @@ export default function Dashboard() {
   
   const [reportType, setReportType] = useState('collection'); // 'collection' or 'due'
   const [selectedFY, setSelectedFY] = useState('All');
+  const [selectedMonth, setSelectedMonth] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedBlock, setSelectedBlock] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFlat, setSelectedFlat] = useState('All');
   
   const [flatData, setFlatData] = useState([]);
   const [dueData, setDueData] = useState([]);
+  const [allResidents, setAllResidents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadData();
-  }, [selectedFY, selectedCategory, selectedBlock, reportType]);
+  }, [selectedFY, selectedMonth, selectedCategory, selectedBlock, selectedFlat, reportType]);
 
   const loadData = async () => {
     setLoading(true);
@@ -56,51 +58,58 @@ export default function Dashboard() {
 
       const blks = await db.select("SELECT DISTINCT block FROM residents WHERE archived = 0 ORDER BY block");
       setBlocks(blks.map(b => b.block));
+      
+      const resData = await db.select("SELECT id, block, flat_no, name FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
+      setAllResidents(resData);
 
-      // Build safe injected queries to avoid subquery parameter binding issues in Tauri SQLite
       let fyFilter = selectedFY !== 'All' ? ` AND d.fiscal_year = '${selectedFY}'` : '';
+      let monthFilter = selectedMonth !== 'All' ? ` AND d.month = '${selectedMonth}'` : '';
       let catFilter = selectedCategory !== 'All' ? ` AND c.name = '${selectedCategory.replace(/'/g, "''")}'` : '';
       let blockFilter = selectedBlock !== 'All' ? ` AND r.block = '${selectedBlock.replace(/'/g, "''")}'` : '';
+      let flatFilter = selectedFlat !== 'All' ? ` AND r.flat_no = '${selectedFlat.replace(/'/g, "''")}'` : '';
 
       if (reportType === 'collection') {
-        let duesQuery = `
-          SELECT d.resident_id, SUM(d.amount) as total_due, SUM(d.paid_amount) as total_paid
-          FROM dues d
-          JOIN fee_categories c ON d.fee_category_id = c.id
-          WHERE 1=1 ${fyFilter} ${catFilter}
-          GROUP BY d.resident_id
-        `;
-
-        const finalQuery = `
-          SELECT 
-            r.id as resident_id, r.block, CAST(r.flat_no AS INTEGER) as flat_num, r.flat_no as flat, r.name, r.credit_balance,
-            COALESCE(sq.total_due, 0) as total_due,
-            COALESCE(sq.total_paid, 0) as total_paid
-          FROM residents r
-          LEFT JOIN (${duesQuery}) sq ON r.id = sq.resident_id
-          WHERE r.archived = 0 ${blockFilter}
-          ORDER BY r.block, CAST(r.flat_no AS INTEGER)
-        `;
-        const rows = await db.select(finalQuery);
+        const events = await getResidentLedger();
         
-        // Calculate Opening Balances if FY is selected
+        let startDate = 0;
+        let endDate = 999999999999999; // Far future
+        
         if (selectedFY !== 'All') {
-          const prevQuery = `
-            SELECT resident_id, SUM(amount - paid_amount) as prev_due
-            FROM dues
-            WHERE fiscal_year < ?
-            GROUP BY resident_id
-          `;
-          const prevRows = await db.select(prevQuery, [selectedFY]);
-          const prevMap = {};
-          prevRows.forEach(p => prevMap[p.resident_id] = p.prev_due);
-          
-          rows.forEach(r => {
-            r.opening_balance = prevMap[r.resident_id] || 0;
-          });
-        } else {
-          rows.forEach(r => r.opening_balance = 0);
+          const startYear = parseInt(selectedFY.split('-')[0]);
+          if (selectedMonth !== 'All') {
+            const monthMap = { "January":1, "February":2, "March":3, "April":4, "May":5, "June":6, "July":7, "August":8, "September":9, "October":10, "November":11, "December":12 };
+            const mIdx = monthMap[selectedMonth];
+            const year = mIdx >= 4 ? startYear : startYear + 1;
+            startDate = new Date(`${year}-${String(mIdx).padStart(2, '0')}-01T00:00:00Z`).getTime();
+            endDate = new Date(new Date(`${year}-${String(mIdx === 12 ? 1 : mIdx + 1).padStart(2, '0')}-01T00:00:00Z`).getTime() - 1).getTime();
+          } else {
+            startDate = new Date(`${startYear}-04-01T00:00:00Z`).getTime();
+            endDate = new Date(`${startYear + 1}-03-31T23:59:59Z`).getTime();
+          }
         }
+        
+        const flatStats = {};
+        resData.forEach(r => {
+          flatStats[r.id] = { block: r.block, flat: r.flat_no, name: r.name, opening: 0, due: 0, paid: 0, closing: 0 };
+        });
+        
+        events.forEach(e => {
+          if (!flatStats[e.resident_id]) return;
+          const stat = flatStats[e.resident_id];
+          
+          if (e.date < startDate) {
+            if (e.type === 'due') stat.opening += e.data.amount;
+            else stat.opening -= e.data.amount;
+          } else if (e.date >= startDate && e.date <= endDate) {
+            if (e.type === 'due') stat.due += e.data.amount;
+            else stat.paid += e.data.amount;
+          }
+        });
+        
+        const rows = Object.values(flatStats).map(s => {
+          s.closing = s.opening + s.due - s.paid;
+          return s;
+        });
         
         setFlatData(rows);
       } else {
@@ -115,7 +124,7 @@ export default function Dashboard() {
           JOIN residents r ON d.resident_id = r.id
           JOIN fee_categories c ON d.fee_category_id = c.id
           WHERE r.archived = 0 AND d.amount > d.paid_amount
-          ${fyFilter} ${catFilter} ${blockFilter}
+          ${fyFilter} ${monthFilter} ${catFilter} ${blockFilter} ${flatFilter}
           ORDER BY r.block, CAST(r.flat_no AS INTEGER), d.id DESC
         `;
         const rows = await db.select(dueReportQuery);
@@ -136,13 +145,12 @@ export default function Dashboard() {
       let sumOp = 0, sumDue = 0, sumPaid = 0, sumOut = 0;
       
       filteredFlats.forEach(row => {
-        const out = row.opening_balance + row.total_due - (row.total_paid + (row.credit_balance || 0));
-        const outText = out === 0 ? "0.00" : (out > 0 ? `${out.toFixed(2)} Dr` : `${Math.abs(out).toFixed(2)} Cr`);
-        csv += `${row.block},${row.flat},"${row.name || ''}",${row.opening_balance},${row.total_due},${row.total_paid},${outText}\n`;
-        sumOp += row.opening_balance;
-        sumDue += row.total_due;
-        sumPaid += row.total_paid;
-        sumOut += out;
+        const outText = row.closing === 0 ? "0.00" : (row.closing > 0 ? `${row.closing.toFixed(2)} Dr` : `${Math.abs(row.closing).toFixed(2)} Cr`);
+        csv += `${row.block},${row.flat},"${row.name || ''}",${row.opening},${row.due},${row.paid},${outText}\n`;
+        sumOp += row.opening;
+        sumDue += row.due;
+        sumPaid += row.paid;
+        sumOut += row.closing;
       });
       const sumOutText = sumOut === 0 ? "0.00" : (sumOut > 0 ? `${sumOut.toFixed(2)} Dr` : `${Math.abs(sumOut).toFixed(2)} Cr`);
       csv += `Total Result,,,${sumOp},${sumDue},${sumPaid},${sumOutText}\n`;
@@ -187,15 +195,12 @@ export default function Dashboard() {
     }
   };
 
-  const filteredFlats = flatData.filter(r => 
-    `${r.block}-${r.flat}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredFlats = useMemo(() => flatData.filter(r => 
+    (selectedBlock === 'All' || r.block === selectedBlock) &&
+    (selectedFlat === 'All' || r.flat === selectedFlat)
+  ), [flatData, selectedBlock, selectedFlat]);
 
-  const filteredDues = dueData.filter(r => 
-    `${r.block}-${r.flat}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDues = dueData; // DB handles due filtering directly
 
   let grandTotalOp = 0;
   let grandTotalDue = 0;
@@ -243,21 +248,28 @@ export default function Dashboard() {
               <option value="All">All Blocks</option>
               {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
             </select>
+            <select value={selectedFlat} onChange={e => setSelectedFlat(e.target.value)}>
+              <option value="All">All Flats</option>
+              {Array.from(new Set(allResidents.filter(r => selectedBlock === 'All' || r.block === selectedBlock).map(r => r.flat_no))).map(f => (
+                <option key={f} value={f}>Flat {f}</option>
+              ))}
+            </select>
             <select value={selectedFY} onChange={e => setSelectedFY(e.target.value)}>
               <option value="All">All Fiscal Years</option>
               {fiscalYears.map(fy => <option key={fy} value={fy}>{fy}</option>)}
             </select>
-            <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}>
-              <option value="All">All Collection Heads</option>
-              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+              <option value="All">All Months</option>
+              {["April","May","June","July","August","September","October","November","December","January","February","March"].map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
             </select>
-            <input 
-              type="text" 
-              placeholder="Search Flat..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              style={{ padding: '0.4rem', width: '200px' }}
-            />
+            {reportType === 'due' && (
+              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}>
+                <option value="All">All Collection Heads</option>
+                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            )}
           </div>
           <button className="primary-btn" onClick={exportToCSV} style={{padding: '0.4rem 1rem'}}>Export to Excel/CSV</button>
         </div>
@@ -280,24 +292,25 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {filteredFlats.map((row, i) => {
-                  const out = row.opening_balance + row.total_due - (row.total_paid + (row.credit_balance || 0));
-                  grandTotalOp += row.opening_balance;
-                  grandTotalDue += row.total_due;
-                  grandTotalPaid += row.total_paid;
-                  grandTotalOut += out;
+                  grandTotalOp += row.opening;
+                  grandTotalDue += row.due;
+                  grandTotalPaid += row.paid;
+                  grandTotalOut += row.closing;
                   
                   const isNewBlock = i === 0 || filteredFlats[i-1].block !== row.block;
-                  const outText = out === 0 ? "0.00" : (out > 0 ? `₹${out.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(out).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`);
+                  const outText = row.closing === 0 ? "0.00" : (row.closing > 0 ? `₹${row.closing.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(row.closing).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`);
 
                   return (
                     <tr key={`${row.block}-${row.flat}`}>
                       <td style={{fontWeight: isNewBlock ? 'bold' : 'normal'}}>{isNewBlock ? `⊞ ${row.block}` : ''}</td>
                       <td>{row.flat}</td>
                       <td>{row.name}</td>
-                      <td style={{textAlign:'right'}}>₹{row.opening_balance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right'}}>₹{row.total_due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right'}}>₹{row.total_paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                      <td style={{textAlign:'right', fontWeight: 'bold', color: out > 0 ? 'var(--error-color, #e74c3c)' : (out < 0 ? '#27ae60' : 'inherit')}}>{outText}</td>
+                      <td style={{textAlign:'right'}}>
+                        {row.opening === 0 ? "0.00" : (row.opening > 0 ? `₹${row.opening.toLocaleString(undefined, {minimumFractionDigits: 2})} Dr` : `₹${Math.abs(row.opening).toLocaleString(undefined, {minimumFractionDigits: 2})} Cr`)}
+                      </td>
+                      <td style={{textAlign:'right'}}>₹{row.due.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td style={{textAlign:'right', color: 'var(--primary-color)'}}>₹{row.paid.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      <td style={{textAlign:'right', fontWeight: 'bold', color: row.closing > 0 ? 'var(--error-color, #e74c3c)' : (row.closing < 0 ? '#27ae60' : 'inherit')}}>{outText}</td>
                     </tr>
                   );
                 })}

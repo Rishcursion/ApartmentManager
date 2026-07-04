@@ -5,40 +5,43 @@ import toast from 'react-hot-toast';
 export default function TopupsHistory() {
   const [topups, setTopups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBlock, setSelectedBlock] = useState('All');
+  const [selectedFlat, setSelectedFlat] = useState('All');
+  const [blocks, setBlocks] = useState([]);
+  const [allResidents, setAllResidents] = useState([]);
 
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualResId, setManualResId] = useState('');
   const [manualAmount, setManualAmount] = useState('');
-  const [allResidents, setAllResidents] = useState([]);
 
   const [manualSource, setManualSource] = useState('Cash');
   const [manualRef, setManualRef] = useState('');
 
+  const filteredTopups = topups.filter(t => 
+    (selectedBlock === 'All' || t.block === selectedBlock) &&
+    (selectedFlat === 'All' || String(t.flat_no) === String(selectedFlat))
+  );
+
   useEffect(() => {
     loadData();
-    loadResidents();
   }, []);
-
-  const loadResidents = async () => {
-    try {
-      const db = await getDb();
-      const res = await db.select("SELECT id, block, flat_no, name FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
-      setAllResidents(res);
-      if (res.length > 0) setManualResId(res[0].id);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const db = await getDb();
+      const blks = await db.select("SELECT DISTINCT block FROM residents WHERE archived = 0 ORDER BY block");
+      setBlocks(blks.map(b => b.block));
+      
+      const resData = await db.select("SELECT id, block, flat_no, name FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
+      setAllResidents(resData);
+
       const allEvents = await getResidentLedger();
       const topupsEvents = allEvents.filter(e => e.type === 'topup').map(e => ({
         ...e.data,
         opening_balance: e.opening_balance,
         closing_balance: e.closing_balance
-      })).reverse(); // Sort descending chronologically
+      })).reverse();
       setTopups(topupsEvents);
     } catch (e) {
       console.error(e);
@@ -71,9 +74,21 @@ export default function TopupsHistory() {
 
   return (
     <div className="dashboard">
-      <div className="dashboard-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+      <div className="dashboard-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
         <h2>Top-up & Transaction History</h2>
-        <button className="primary-btn" onClick={() => setShowManualModal(true)}>+ Manual Payment</button>
+        <div style={{display: 'flex', gap: '1rem'}}>
+          <select value={selectedBlock} onChange={e => { setSelectedBlock(e.target.value); setSelectedFlat('All'); }}>
+            <option value="All">All Blocks</option>
+            {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
+          </select>
+          <select value={selectedFlat} onChange={e => setSelectedFlat(e.target.value)}>
+            <option value="All">All Flats</option>
+            {Array.from(new Set(allResidents.filter(r => selectedBlock === 'All' || r.block === selectedBlock).map(r => r.flat_no))).map(f => (
+              <option key={f} value={f}>Flat {f}</option>
+            ))}
+          </select>
+          <button className="primary-btn" onClick={() => setShowManualModal(true)}>+ Manual Payment</button>
+        </div>
       </div>
 
       {showManualModal && (
@@ -152,7 +167,7 @@ export default function TopupsHistory() {
               </tr>
             </thead>
             <tbody>
-              {topups.map(t => {
+              {filteredTopups.map(t => {
                 const rawDate = t.created_at ? t.created_at.replace(' ', 'T') + 'Z' : '';
                 const displayDate = rawDate ? new Date(rawDate).toLocaleString() : '-';
                 return (

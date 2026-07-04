@@ -6,7 +6,10 @@ export default function Dashboard() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState('outstanding'); // outstanding, settled, all
-  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedBlock, setSelectedBlock] = useState('All');
+  const [selectedFlat, setSelectedFlat] = useState('All');
+  const [blocks, setBlocks] = useState([]);
+  const [allResidents, setAllResidents] = useState([]);
   const [dues, setDues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'block', direction: 'asc' });
@@ -23,6 +26,12 @@ export default function Dashboard() {
       const db = await getDb();
       const cats = await db.select("SELECT * FROM fee_categories");
       setCategories(cats);
+
+      const blks = await db.select("SELECT DISTINCT block FROM residents WHERE archived = 0 ORDER BY block");
+      setBlocks(blks.map(b => b.block));
+      
+      const resData = await db.select("SELECT id, block, flat_no FROM residents WHERE archived = 0 ORDER BY block, CAST(flat_no AS INTEGER)");
+      setAllResidents(resData);
 
       const allEvents = await getResidentLedger();
       let realDues = allEvents.filter(e => e.type === 'due').map(e => ({
@@ -75,8 +84,8 @@ export default function Dashboard() {
   });
 
   const filteredRows = sortedDues.filter(due => 
-    `${due.block}-${due.flat}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (due.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (selectedBlock === 'All' || due.block === selectedBlock) &&
+    (selectedFlat === 'All' || due.flat === selectedFlat)
   );
 
   const handleSettle = async (due) => {
@@ -117,14 +126,17 @@ export default function Dashboard() {
         <h2>Dues & Payments Ledger</h2>
       </div>
 
-      <div className="filters" style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem'}}>
-          <input 
-            type="text" 
-            placeholder="Search Flat (e.g. A-4) or Name..." 
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{ padding: '0.5rem', width: '250px' }}
-          />
+      <div className="filters" style={{display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap'}}>
+          <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
+            <option value="All">All Blocks</option>
+            {blocks.map(b => <option key={b} value={b}>Block {b}</option>)}
+          </select>
+          <select value={selectedFlat} onChange={e => setSelectedFlat(e.target.value)}>
+            <option value="All">All Flats</option>
+            {Array.from(new Set(allResidents.filter(r => selectedBlock === 'All' || r.block === selectedBlock).map(r => r.flat_no))).map(f => (
+              <option key={f} value={f}>Flat {f}</option>
+            ))}
+          </select>
           <select value={viewMode} onChange={(e) => setViewMode(e.target.value)}>
             <option value="outstanding">Outstanding Dues Only</option>
             <option value="settled">Settled / Paid Bills</option>
