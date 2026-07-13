@@ -132,6 +132,55 @@ export async function settleDue({ dueId, residentId, amount }) {
   });
 }
 
+export async function deleteDue(dueId) {
+  return withTransaction(async (db) => {
+    const dues = await db.select("SELECT resident_id, paid_amount FROM dues WHERE id = ?", [dueId]);
+    if (dues.length === 0) throw new Error('Due not found');
+
+    const residentId = dues[0].resident_id;
+    const paidAmount = Number(dues[0].paid_amount) || 0;
+
+    // Refund paid amount back to the resident's credit balance
+    if (paidAmount > 0) {
+      await db.execute("UPDATE residents SET credit_balance = COALESCE(credit_balance, 0) + ? WHERE id = ?", [paidAmount, residentId]);
+    }
+
+    // Delete the due
+    await db.execute("DELETE FROM dues WHERE id = ?", [dueId]);
+    return { refunded: paidAmount };
+  });
+}
+
+export async function updateDueAmount(dueId, newAmount) {
+  return withTransaction(async (db) => {
+    const dues = await db.select("SELECT resident_id, paid_amount FROM dues WHERE id = ?", [dueId]);
+    if (dues.length === 0) throw new Error('Due not found');
+
+    const residentId = dues[0].resident_id;
+    let paidAmount = Number(dues[0].paid_amount) || 0;
+    const amount = Number(newAmount);
+    
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('Invalid amount');
+    }
+
+    let status = 'Unpaid';
+    
+    // If the new amount is less than what's already paid, we refund the difference
+    if (amount < paidAmount) {
+      const refund = paidAmount - amount;
+      await db.execute("UPDATE residents SET credit_balance = COALESCE(credit_balance, 0) + ? WHERE id = ?", [refund, residentId]);
+      paidAmount = amount;
+      status = 'Paid';
+    } else if (paidAmount > 0) {
+      status = paidAmount >= amount ? 'Paid' : 'Partial';
+    }
+
+    await db.execute("UPDATE dues SET amount = ?, paid_amount = ?, status = ? WHERE id = ?", [amount, paidAmount, status, dueId]);
+    return { amount, paidAmount, status };
+  });
+}
+
 export async function getApartmentLayout() {
   const db = await getDb();
   const rows = await db.select("SELECT value FROM app_settings WHERE key = 'apartment_layout'");

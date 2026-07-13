@@ -42,12 +42,12 @@ jobs:
         working-directory: ./apartment-gui
 
       - name: Build and publish Tauri release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: ./apartment-gui
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          tagName: v__VERSION__
           releaseName: "Apartment Manager v__VERSION__"
           releaseBody: "Download the Windows installer from the assets below."
           releaseDraft: false

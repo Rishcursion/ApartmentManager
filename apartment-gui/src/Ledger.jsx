@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { getDb, getResidentLedger, getPeriodDates, settleDue } from './db';
+import { getDb, getResidentLedger, getPeriodDates, settleDue, deleteDue, updateDueAmount } from './db';
 import toast from 'react-hot-toast';
+import { Pencil, Trash2 } from 'lucide-react';
 
 export default function Ledger() {
   const [categories, setCategories] = useState([]);
@@ -18,6 +19,9 @@ export default function Ledger() {
   const [sortConfig, setSortConfig] = useState({ key: 'block', direction: 'asc' });
   const [pendingSettlement, setPendingSettlement] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [editingDue, setEditingDue] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [deletingDue, setDeletingDue] = useState(null);
 
 
 
@@ -133,6 +137,51 @@ export default function Ledger() {
     }
   };
 
+  const handleDelete = (due) => {
+    setDeletingDue(due);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingDue || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await deleteDue(deletingDue.unique_id);
+      toast.success("Due deleted successfully");
+      setDeletingDue(null);
+      loadData();
+    } catch (e) {
+      console.error("Delete error:", e);
+      toast.error(`Error deleting due: ${e.message || e}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleEdit = (due) => {
+    setEditingDue(due);
+    setEditAmount(due.total_due);
+  };
+
+  const confirmEdit = async () => {
+    if (!editingDue || isProcessing) return;
+    if (isNaN(editAmount) || Number(editAmount) < 0) {
+      toast.error("Please enter a valid amount");
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await updateDueAmount(editingDue.unique_id, editAmount);
+      toast.success("Due amount updated");
+      setEditingDue(null);
+      loadData();
+    } catch (e) {
+      console.error("Edit error:", e);
+      toast.error(`Error updating due: ${e.message || e}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
 
 
   return (
@@ -215,16 +264,35 @@ export default function Ledger() {
                       {due.closing_balance === 0 ? "0.00" : (due.closing_balance > 0 ? `₹${due.closing_balance} Dr` : `₹${Math.abs(due.closing_balance)} Cr`)}
                     </td>
                     <td><span className={`badge ${due.status.toLowerCase()}`}>{due.status}</span></td>
-                    <td>
+                    <td style={{whiteSpace: 'nowrap'}}>
                       {!isSettled && (due.credit_balance > 0) && (
                         <button 
                           className="action-btn" 
                           onClick={() => handleSettle(due)}
-                          style={{padding: '4px 8px', fontSize: '12px'}}
+                          disabled={isProcessing}
+                          style={{padding: '4px 8px', fontSize: '12px', marginRight: '4px'}}
                         >
                           Settle
                         </button>
                       )}
+                      <button 
+                        className="action-btn" 
+                        onClick={() => handleEdit(due)}
+                        disabled={isProcessing}
+                        style={{padding: '4px 8px', fontSize: '12px', marginRight: '4px', verticalAlign: 'middle'}}
+                        title="Edit Amount"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button 
+                        className="action-btn" 
+                        onClick={() => handleDelete(due)}
+                        disabled={isProcessing}
+                        style={{padding: '4px 8px', fontSize: '12px', color: 'var(--error-color, #e74c3c)', verticalAlign: 'middle'}}
+                        title="Delete Due"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -262,6 +330,56 @@ export default function Ledger() {
               <button className="secondary-btn" disabled={isProcessing} onClick={() => setPendingSettlement(null)}>Cancel</button>
               <button className="primary-btn" disabled={isProcessing} onClick={confirmSettlement}>
                 {isProcessing ? 'Processing...' : 'Confirm Settlement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingDue && (
+        <div className="modal-overlay">
+          <div className="modal card">
+            <h3>Edit Due Amount</h3>
+            <p className="section-subtitle">
+              {editingDue.block}-{editingDue.flat} · {editingDue.head} · {editingDue.months_list}
+            </p>
+            <div className="mt-1">
+              <label>Amount (₹)</label>
+              <input 
+                type="number" 
+                step="0.01" 
+                value={editAmount} 
+                onChange={e => setEditAmount(e.target.value)} 
+                style={{width: '100%', padding: '0.5rem', marginTop: '0.5rem'}}
+              />
+              <small style={{display: 'block', marginTop: '0.5rem', color: 'var(--text-color)'}}>
+                If the new amount is less than the already paid amount (₹{editingDue.total_paid}), the difference will be refunded to the resident's wallet.
+              </small>
+            </div>
+            <div className="modal-actions mt-2">
+              <button className="secondary-btn" disabled={isProcessing} onClick={() => setEditingDue(null)}>Cancel</button>
+              <button className="primary-btn" disabled={isProcessing} onClick={confirmEdit}>
+                {isProcessing ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingDue && (
+        <div className="modal-overlay">
+          <div className="modal card">
+            <h3 style={{color: 'var(--error-color, #e74c3c)'}}>Delete Due</h3>
+            <p className="mt-1">
+              Are you sure you want to delete this <strong>{deletingDue.head}</strong> due for <strong>{deletingDue.block}-{deletingDue.flat}</strong>?
+            </p>
+            <p className="mt-1" style={{fontSize: '0.9rem', color: 'var(--text-color)'}}>
+              If any amount was paid, it will be automatically refunded to their credit wallet. This action cannot be undone.
+            </p>
+            <div className="modal-actions mt-2">
+              <button className="secondary-btn" disabled={isProcessing} onClick={() => setDeletingDue(null)}>Cancel</button>
+              <button className="primary-btn" disabled={isProcessing} style={{background: 'var(--error-color, #e74c3c)', borderColor: 'var(--error-color, #e74c3c)', color: 'white'}} onClick={confirmDelete}>
+                {isProcessing ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>
